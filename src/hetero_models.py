@@ -1,7 +1,3 @@
-"""
-Reusable hetero GNN encoders (<=5 variants) that can be swapped easily.
-Each encoder exposes `forward(x_dict, edge_index_dict) -> z_dict`.
-"""
 from __future__ import annotations
 
 import torch
@@ -9,6 +5,7 @@ from torch import nn
 from torch_geometric.nn import (
     GATConv,
     GCNConv,
+    GraphConv,
     HGTConv,
     RGCNConv,
     SAGEConv,
@@ -31,17 +28,21 @@ class _TwoLayerBase(nn.Module):
 
 
 def hetero_sage(metadata, hidden: int = 128, out: int = 128):
-    base = _TwoLayerBase(SAGEConv, (-1, -1), hidden, out)
+    # Use in_ch = -1 so PyG infers channels per type; avoids tuple issues on older PyG.
+    base = _TwoLayerBase(SAGEConv, -1, hidden, out)
     return to_hetero(base, metadata=metadata, aggr="sum")
 
 
 def hetero_gcn(metadata, hidden: int = 128, out: int = 128):
-    base = _TwoLayerBase(GCNConv, (-1, -1), hidden, out)
+    """GraphConv fallback because GCNConv lacks bipartite support in this PyG version."""
+    # Older GraphConv may not accept add_self_loops kwarg; rely on its default behavior.
+    base = _TwoLayerBase(GraphConv, -1, hidden, out)
     return to_hetero(base, metadata=metadata, aggr="sum")
 
 
 def hetero_gat(metadata, hidden: int = 128, out: int = 128, heads: int = 4):
-    base = _TwoLayerBase(GATConv, (-1, -1), hidden, out, heads=heads, concat=True)
+    # Use concat=False to keep feature dims consistent across layers; disable self-loops.
+    base = _TwoLayerBase(GATConv, -1, hidden, out, heads=heads, concat=False, add_self_loops=False)
     return to_hetero(base, metadata=metadata, aggr="sum")
 
 
@@ -65,7 +66,7 @@ def hetero_hgt(metadata, hidden: int = 128, out: int = 128, heads: int = 4):
     class HGTWrapper(nn.Module):
         def __init__(self):
             super().__init__()
-            self.conv1 = HGTConv((-1, -1), hidden, metadata=metadata, heads=heads)
+            self.conv1 = HGTConv(hidden, hidden, metadata=metadata, heads=heads)
             self.conv2 = HGTConv(hidden, out, metadata=metadata, heads=heads)
 
         def forward(self, x_dict, edge_index_dict):

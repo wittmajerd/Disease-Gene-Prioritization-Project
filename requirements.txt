@@ -8,3 +8,11 @@ mygene>=3.2
 scikit-learn>=1.2
 jupyterlab>=4.0
 tqdm>=4.65
+
+# pecanpy>=2.0.1
+# pytorch_lightning>=1.5.1
+# scikit_learn>=0.24.1
+# torch>=1.10.1+cu113
+# torch_geometric>=2.0.5
+# wandb>=0.12.9
+

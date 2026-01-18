@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import pickle
 import json
 import random
 import warnings
@@ -10,7 +11,6 @@ from types import SimpleNamespace
 from typing import Dict, Tuple
 
 import torch
-from ogb.linkproppred import PygLinkPropPredDataset
 from torch import Tensor
 from torch.nn import BCEWithLogitsLoss
 from torch_geometric.data import Data, HeteroData
@@ -44,6 +44,16 @@ def _sanitize_rel(rel: str) -> str:
     return rel.replace("-", "_")
 
 
+def load_dataset_from_pickle() -> Dict:
+    """Load ogbl-biokg raw dataset from pickle file."""
+    root = Path.cwd().parent
+
+    with open(root / "ogbl_biokg_raw.pkl", "rb") as f:
+        dataset = pickle.load(f)
+
+    return dataset
+
+
 def load_biokg() -> Tuple[Data, Tensor, Tensor]:
     """Load ogbl-biokg and return bipartite (disease, protein) graph and counts.
 
@@ -52,8 +62,7 @@ def load_biokg() -> Tuple[Data, Tensor, Tensor]:
         num_diseases: tensor with single int.
         num_proteins: tensor with single int.
     """
-    dataset = PygLinkPropPredDataset(name="ogbl-biokg")
-    hetero = dataset[0]
+    hetero = load_dataset_from_pickle() 
 
     dp_edges = hetero.edge_index_dict[("disease", "disease-protein", "protein")]
     num_diseases = torch.tensor(hetero.num_nodes_dict["disease"])
@@ -73,8 +82,7 @@ def load_biokg() -> Tuple[Data, Tensor, Tensor]:
 
 def load_biokg_hetero() -> Tuple[HeteroData, Tensor, Tensor]:
     """Load ogbl-biokg and keep disease–protein plus optional protein–protein edges."""
-    dataset = PygLinkPropPredDataset(name="ogbl-biokg")
-    hetero = dataset[0]
+    hetero = load_dataset_from_pickle()
 
     data = HeteroData()
     num_diseases = hetero.num_nodes_dict["disease"]
@@ -333,13 +341,13 @@ def pretty(summary: Dict) -> str:
 # %%
 defaults = {
     "add_ppi": True,
-    "model_kind": "gcn",  # sage|gcn|gat|hgt   |rgcn
-    "hidden": 128,
+    "model_kind": "sage",  # sage|gcn|gat|hgt   |rgcn
+    "hidden": 256,
     "out": 128,
     "lr": 1e-3,
-    "weight_decay": 0.0,
-    "epochs": 50,
-    "eval_every": 1,
+    "weight_decay": 0.01,
+    "epochs": 1000,
+    "eval_every": 10,
     "train_ratio": 0.8,
     "val_ratio": 0.1,
     "seed": 42,
@@ -358,6 +366,7 @@ train_e, val_e, test_e = random_split_edges(
     data["disease", _sanitize_rel("disease-protein"), "protein"].edge_index, args.train_ratio, args.val_ratio, args.seed
 )
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 data = data.to(device)
 train_e, val_e, test_e = train_e.to(device), val_e.to(device), test_e.to(device)
 model = HeteroLinkPredictor(
@@ -426,8 +435,7 @@ print(pretty(defaults))
 
 seed_everything(args.seed)
 
-dataset = PygLinkPropPredDataset(name="ogbl-biokg")
-hetero = dataset[0]
+hetero = load_dataset_from_pickle()
 graph, num_diseases, num_proteins = load_biokg()
 if args.add_ppi:
     graph = add_ppi_edges(graph, int(num_diseases), hetero)
@@ -473,8 +481,6 @@ print(
 )
 
 # %%
-
-
 data, nd, np = load_biokg_hetero()
 print(pretty(summarize_hetero(data)))
 
@@ -482,12 +488,6 @@ graph, nd, np = load_biokg()
 print(pretty(summarize_bipartite(graph, nd, np)))
 
 # %%
-import pickle
-from ogb.linkproppred import PygLinkPropPredDataset
 
-dataset = PygLinkPropPredDataset(name="ogbl-biokg")
-
-# with open("ogbl_biokg_raw.pkl", "wb") as f:
-#     pickle.dump(dataset[0], f)
 
 # %%

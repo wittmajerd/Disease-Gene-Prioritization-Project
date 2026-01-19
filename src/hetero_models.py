@@ -9,6 +9,7 @@ from torch_geometric.nn import (
     HGTConv,
     RGCNConv,
     SAGEConv,
+    TransformerConv,
     to_hetero,
 )
 
@@ -25,6 +26,40 @@ class _TwoLayerBase(nn.Module):
         x = self.conv1(x, edge_index).relu()
         x = self.conv2(x, edge_index)
         return x
+
+
+class _ModularBase(nn.Module):
+    """Multi-layer base model to be heterogenized via to_hetero."""
+
+    def __init__(self, layer_kind: str, layer_sizes: list[int], heads: int = 4):
+        super().__init__()
+        if not layer_sizes:
+            raise ValueError("layer_sizes must not be empty")
+
+        self.convs = nn.ModuleList()
+        for i, out_ch in enumerate(layer_sizes):
+            in_ch = -1 if i == 0 else layer_sizes[i - 1]
+            self.convs.append(_build_conv(layer_kind, in_ch, out_ch, heads=heads))
+
+    def forward(self, x, edge_index):
+        for i, conv in enumerate(self.convs):
+            x = conv(x, edge_index)
+            if i < len(self.convs) - 1:
+                x = x.relu()
+        return x
+
+
+def _build_conv(kind: str, in_ch: int, out_ch: int, heads: int = 4):
+    kind = kind.lower()
+    if kind == "sage":
+        return SAGEConv(in_ch, out_ch)
+    if kind == "gcn":
+        return GraphConv(in_ch, out_ch)
+    if kind == "gat":
+        return GATConv(in_ch, out_ch, heads=heads, concat=False, add_self_loops=False)
+    if kind in {"transformer", "graph_transformer"}:
+        return TransformerConv(in_ch, out_ch, heads=heads, concat=False)
+    raise ValueError(f"Unknown layer type: {kind}")
 
 
 def hetero_sage(metadata, hidden: int = 128, out: int = 128):
@@ -78,6 +113,11 @@ def hetero_hgt(metadata, hidden: int = 128, out: int = 128, heads: int = 4):
     return HGTWrapper()
 
 
+def hetero_modular(metadata, layer_kind: str, layer_sizes: list[int], heads: int = 4):
+    base = _ModularBase(layer_kind=layer_kind, layer_sizes=layer_sizes, heads=heads)
+    return to_hetero(base, metadata=metadata, aggr="sum")
+
+
 def build_encoder(kind: str, metadata=None, num_relations: int = None, hidden: int = 128, out: int = 128, heads: int = 4, num_bases: int = 30):
     kind = kind.lower()
     if kind == "sage":
@@ -93,3 +133,7 @@ def build_encoder(kind: str, metadata=None, num_relations: int = None, hidden: i
     if kind == "hgt":
         return hetero_hgt(metadata, hidden, out, heads=heads)
     raise ValueError(f"Unknown encoder kind: {kind}")
+
+
+def build_modular_encoder(metadata, layer_kind: str, layer_sizes: list[int], heads: int = 4):
+    return hetero_modular(metadata, layer_kind=layer_kind, layer_sizes=layer_sizes, heads=heads)

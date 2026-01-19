@@ -1,0 +1,22 @@
+use_hetero: false
+add_ppi: false
+model_kind: sage
+layer_count: 3
+layer_size: 256
+output_size: 128
+lr: 0.001
+weight_decay: 0.01
+epochs: 20
+eval_every: 1
+train_ratio: 0.8
+val_ratio: 0.1
+seed: 42
+patience: 10
+ckpt_path:
+heads: 4
+num_bases: 30
+use_node2vec: false
+node2vec_dim: 128
+node2vec_epochs: 20
+node2vec_lr: 0.01
+run_name: test_run_2

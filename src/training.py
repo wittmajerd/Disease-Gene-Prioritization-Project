@@ -8,8 +8,8 @@ import torch
 from torch import Tensor
 from torch.nn import BCEWithLogitsLoss
 
-from .metrics import classification_metrics
-from .splits import negative_sampling_homo, negative_sampling_hetero
+from src.metrics import classification_metrics
+from src.splits import negative_sampling_homo, negative_sampling_hetero
 
 
 def seed_everything(seed: int) -> None:

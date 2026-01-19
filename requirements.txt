@@ -8,6 +8,7 @@ mygene>=3.2
 scikit-learn>=1.2
 jupyterlab>=4.0
 tqdm>=4.65
+pyyaml>=6.0
 
 # pecanpy>=2.0.1
 # pytorch_lightning>=1.5.1

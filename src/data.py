@@ -24,3 +24,18 @@ def load_biokg_pickle(root: Path | None = None) -> Any:
     
     with path.open("rb") as f:
         return pickle.load(f)
+
+
+# Betöltés
+def load_raw_data(path) -> Any                          # pickle load
+
+# Gráf építés — a config-ban lévő node/edge típusok alapján
+def build_hetero_graph(raw, graph_cfg) -> HeteroData     # KULCS: csak azt veszi be ami a config-ban van
+def get_graph_summary(data) -> dict                      # EDA
+
+# Split — a target edge-re, message-passing aware
+@dataclass EdgeSplits: train, val, test, msg_passing_edge_index_dict
+def split_target_edges(data, target_edge, split_cfg) -> EdgeSplits
+
+# Negative sampling — kiszűri a valódi éleket
+def negative_sampling(num_src, num_dst, num_samples, positive_edges, device) -> Tensor

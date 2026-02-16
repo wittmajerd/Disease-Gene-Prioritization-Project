@@ -1,22 +1,38 @@
-use_hetero: false
-add_ppi: false
-model_kind: sage
-layer_count: 3
-layer_size: 256
-output_size: 128
-lr: 0.001
-weight_decay: 0.01
-epochs: 20
-eval_every: 1
-train_ratio: 0.8
-val_ratio: 0.1
 seed: 42
-patience: 10
-ckpt_path:
-heads: 4
-num_bases: 30
-use_node2vec: false
-node2vec_dim: 128
-node2vec_epochs: 20
-node2vec_lr: 0.01
-run_name: test_run_2
+
+graph:
+  data_path: "ogbl_biokg_raw.pkl"
+  node_types: ["disease", "protein"]          # bővíthető: ["disease", "protein", "drug", "function"]
+  edge_types:                                  # melyik él-típusokat vegyük be
+    - ["disease", "disease-protein", "protein"]
+    - ["protein", "protein-protein_binding", "protein"]
+    - ["protein", "protein-protein_catalysis", "protein"]
+    # ... bármit hozzáadsz/elveszel
+  add_reverse_edges: true
+  target_edge: ["disease", "disease_protein", "protein"]  # ezen mérünk
+
+split:
+  train_ratio: 0.8
+  val_ratio: 0.1
+
+model:
+  encoder_type: "sage"       # sage | gat | gcn | transformer | hgt
+  hidden_dim: 256
+  num_layers: 3
+  output_dim: 128
+  heads: 4
+  dropout: 0.0
+  decoder_type: "dot_product"  # dot_product | mlp | distmult
+
+training:
+  lr: 0.001
+  weight_decay: 0.01
+  epochs: 200
+  patience: 10
+  eval_every: 1
+  neg_ratio: 1.0
+
+logging:
+  use_wandb: false
+  project: "disease-gene-prioritization"
+  run_name: null

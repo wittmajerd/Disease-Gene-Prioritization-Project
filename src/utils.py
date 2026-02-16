@@ -47,3 +47,12 @@ def _save_yaml(path: Path, payload) -> None:
 def _append_jsonl(path: Path, payload) -> None:
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(payload) + "\n")
+
+
+
+def seed_everything(seed)
+def setup_logging(cfg) -> Logger        # file + opcionálisan wandb.init()
+def log_metrics(logger, epoch, metrics) # print + wandb.log()
+def save_checkpoint(model, path)
+def load_checkpoint(model, path, device)
+def save_results(run_dir, summary)

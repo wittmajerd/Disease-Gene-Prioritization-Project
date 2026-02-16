@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import pickle
 
 
 def sanitize_rel(rel: str) -> str:
@@ -20,7 +21,6 @@ def load_biokg_pickle(root: Path | None = None) -> Any:
         raise FileNotFoundError(
             f"Missing {path}. Create it with your preprocessing or place the file at the project root."
         )
-    import pickle
-
+    
     with path.open("rb") as f:
         return pickle.load(f)

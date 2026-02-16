@@ -8,8 +8,8 @@ import torch
 from torch import Tensor
 from torch.nn import BCEWithLogitsLoss
 
-from src.metrics import classification_metrics
-from src.splits import negative_sampling_homo, negative_sampling_hetero
+from src.evaluation import evaluate_hetero, evaluate_homo
+from src.preprocessing import EdgeSplits, GraphArtifacts, negative_sampling_hetero, negative_sampling_homo
 
 
 def seed_everything(seed: int) -> None:
@@ -58,17 +58,6 @@ def train_one_epoch_homo(model, optimizer, edge_index: Tensor, pos_edges: Tensor
     return float(loss.item())
 
 
-def evaluate_homo(model, edge_index: Tensor, pos_edges: Tensor, device) -> Dict[str, float]:
-    model.eval()
-    with torch.no_grad():
-        pos_out = model(edge_index, pos_edges)
-        neg_edges = negative_sampling_homo(model.embedding.num_embeddings, pos_edges.size(1), device)
-        neg_out = model(edge_index, neg_edges)
-        scores = torch.cat([pos_out, neg_out]).cpu()
-        labels = torch.cat([torch.ones(pos_out.size(0)), torch.zeros(neg_out.size(0))]).cpu()
-    return classification_metrics(scores, labels)
-
-
 def train_one_epoch_hetero(
     model, optimizer, data, pos_edges: Tensor, device, num_diseases: int, num_proteins: int
 ) -> float:
@@ -86,12 +75,83 @@ def train_one_epoch_hetero(
     return float(loss.item())
 
 
-def evaluate_hetero(model, data, pos_edges: Tensor, device, num_diseases: int, num_proteins: int) -> Dict[str, float]:
-    model.eval()
-    with torch.no_grad():
-        pos_out = model(data, pos_edges)
-        neg_edges = negative_sampling_hetero(num_diseases, num_proteins, pos_edges.size(1), device)
-        neg_out = model(data, neg_edges)
-        scores = torch.cat([pos_out, neg_out]).cpu()
-        labels = torch.cat([torch.ones(pos_out.size(0)), torch.zeros(neg_out.size(0))]).cpu()
-    return classification_metrics(scores, labels)
+def train_with_validation(
+    cfg,
+    model,
+    artifacts: GraphArtifacts,
+    splits: EdgeSplits,
+    device,
+    logger,
+    ckpt_path: Path,
+) -> Dict[str, object]:
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    stopper = EarlyStopper(patience=cfg.patience, mode="max")
+    best_val = float("-inf")
+    best_epoch = 0
+    best_val_metrics = None
+
+    for epoch in range(1, cfg.epochs + 1):
+        if cfg.use_hetero:
+            loss = train_one_epoch_hetero(
+                model,
+                optimizer,
+                artifacts.graph_data,
+                splits.train_edges,
+                device,
+                artifacts.num_diseases,
+                artifacts.num_proteins,
+            )
+        else:
+            loss = train_one_epoch_homo(
+                model,
+                optimizer,
+                artifacts.graph_data.edge_index,
+                splits.train_edges,
+                device,
+            )
+
+        if epoch % cfg.eval_every != 0:
+            continue
+
+        if cfg.use_hetero:
+            val_metrics = evaluate_hetero(
+                model,
+                artifacts.graph_data,
+                splits.val_edges,
+                device,
+                artifacts.num_diseases,
+                artifacts.num_proteins,
+            )
+        else:
+            val_metrics = evaluate_homo(
+                model,
+                artifacts.graph_data.edge_index,
+                splits.val_edges,
+                device,
+            )
+
+        improved = val_metrics["f1"] > best_val
+        if improved:
+            best_val = val_metrics["f1"]
+            best_epoch = epoch
+            best_val_metrics = val_metrics
+            save_ckpt(model, ckpt_path)
+
+        logger.info(
+            "Epoch %03d | loss %.4f | val f1 %.4f | precision %.4f | recall %.4f",
+            epoch,
+            loss,
+            val_metrics["f1"],
+            val_metrics["precision"],
+            val_metrics["recall"],
+        )
+
+        if stopper.step(val_metrics["f1"]):
+            logger.info("Early stopping.")
+            break
+
+    return {
+        "best_val_f1": best_val,
+        "best_epoch": best_epoch,
+        "best_val_metrics": best_val_metrics,
+    }

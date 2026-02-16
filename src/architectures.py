@@ -23,6 +23,7 @@ class _GNNBase(torch.nn.Module):
         super().__init__()
         if not layer_sizes:
             raise ValueError("layer_sizes must not be empty")
+
         self.convs = torch.nn.ModuleList()
         for i, out_ch in enumerate(layer_sizes):
             if i == 0:
@@ -40,8 +41,6 @@ class _GNNBase(torch.nn.Module):
 
 
 class GNNLinkPredictor(torch.nn.Module):
-    """Homogeneous link predictor with a single layer type and configurable sizes."""
-
     def __init__(
         self,
         num_nodes: int,
@@ -78,8 +77,6 @@ class GNNLinkPredictor(torch.nn.Module):
 
 
 class HeteroLinkPredictor(torch.nn.Module):
-    """Heterogeneous link predictor with a single layer type and configurable sizes."""
-
     def __init__(
         self,
         metadata,
@@ -117,14 +114,10 @@ class HeteroLinkPredictor(torch.nn.Module):
     def forward(self, data, edge_label_index: Tensor) -> Tensor:
         x_dict = {ntype: self.emb[ntype] for ntype in self.emb}
         z_dict = self.encoder(x_dict, data.edge_index_dict)
-        return (z_dict["disease"][edge_label_index[0]] * z_dict["protein"][edge_label_index[1]]).sum(
-            dim=-1
-        )
+        return (z_dict["disease"][edge_label_index[0]] * z_dict["protein"][edge_label_index[1]]).sum(dim=-1)
 
 
 class Node2VecFeaturizer:
-    """Learn node features with Node2Vec before GNN training."""
-
     def __init__(
         self,
         embedding_dim: int = 128,
@@ -175,13 +168,12 @@ class Node2VecFeaturizer:
         optimizer = optimizer_cls(list(self.model.parameters()), lr=lr)
 
         for _ in range(epochs):
-            total_loss = 0.0
             for pos_rw, neg_rw in loader:
                 optimizer.zero_grad()
                 loss = self.model.loss(pos_rw.to(device), neg_rw.to(device))
                 loss.backward()
                 optimizer.step()
-                total_loss += float(loss.item())
+
         return self
 
     def get_embeddings(self) -> Tensor:

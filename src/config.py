@@ -6,6 +6,8 @@ import yaml
 from dataclasses import dataclass, fields
 from pathlib import Path
 
+from src.utils import _project_root
+
 
 @dataclass
 class PipelineConfig:
@@ -34,7 +36,7 @@ class PipelineConfig:
     node2vec_lr: float = 0.01
 
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[1] / "run_config.yaml"
+DEFAULT_CONFIG_PATH = _project_root() / "run_config.yaml"
 
 
 def _coerce_config(raw: dict) -> PipelineConfig:

@@ -1,58 +1,135 @@
+"""Shared utilities: seeding, I/O, logging, checkpointing.
+
+Every function here is stateless (no class needed).
+"""
+
+from __future__ import annotations
+
 import json
-import yaml
 import logging
+import random
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+import torch
+import yaml
 
 
-def _pretty(obj) -> str:
-    return json.dumps(obj, indent=4)
+# ── Paths ───────────────────────────────────────────────────────────
 
 
-def _project_root() -> Path:
+def project_root() -> Path:
+    """Return the absolute path to the project root directory."""
     return Path(__file__).resolve().parents[1]
 
 
-def _setup_run_dir(run_name: str | None) -> Path:
-    runs_root = _project_root() / "saves"
-    runs_root.mkdir(parents=True, exist_ok=True)
-    if run_name is None or not run_name.strip():
-        run_name = datetime.now().strftime("run_%Y%m%d_%H%M%S")
-    run_dir = runs_root / run_name
-    run_dir.mkdir(parents=True, exist_ok=True)
-    return run_dir
+# ── Seeding ─────────────────────────────────────────────────────────
 
 
-def _setup_logger(run_dir: Path) -> logging.Logger:
-    logger = logging.getLogger("biokg.pipeline")
-    logger.setLevel(logging.INFO)
-    logger.handlers.clear()
-
-    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
-
-    file_handler = logging.FileHandler(run_dir / "run.log", encoding="utf-8")
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
-
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    logger.addHandler(stream_handler)
-
-    return logger
+def seed_everything(seed: int) -> None:
+    """Seed Python, NumPy, PyTorch (CPU + all CUDA devices)."""
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 
-def _save_yaml(path: Path, payload) -> None:
-    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
-
-def _append_jsonl(path: Path, payload) -> None:
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(payload) + "\n")
+# ── Run directory ───────────────────────────────────────────────────
 
 
+def setup_run_dir(run_name: str | None) -> Path:
+    """Create (or reuse) a run directory under ``saves/``.
 
-def seed_everything(seed)
-def setup_logging(cfg) -> Logger        # file + opcionálisan wandb.init()
-def log_metrics(logger, epoch, metrics) # print + wandb.log()
-def save_checkpoint(model, path)
-def load_checkpoint(model, path, device)
-def save_results(run_dir, summary)
+    If *run_name* is ``None`` or empty, generates a timestamp-based name.
+
+    Returns
+    -------
+    Absolute path to the run directory.
+    """
+    ...
+
+
+# ── Logging ─────────────────────────────────────────────────────────
+
+
+def setup_logger(run_dir: Path) -> logging.Logger:
+    """Configure a logger that writes to both **console** and
+    ``run_dir/run.log``.
+
+    Returns
+    -------
+    A ``logging.Logger`` instance named ``"biokg.pipeline"``.
+    """
+    ...
+
+
+def setup_wandb(cfg: Any) -> None:
+    """Initialise a Weights & Biases run (if ``cfg.logging.use_wandb``).
+
+    Called once at the start of the pipeline.  Silently skips if wandb
+    is not installed or ``use_wandb`` is ``False``.
+
+    Logs the full ``PipelineConfig`` as the W&B config so that every
+    hyper-parameter is searchable / filterable in the dashboard.
+    """
+    ...
+
+
+def log_metrics(
+    logger: logging.Logger,
+    epoch: int,
+    loss: float,
+    metrics: dict[str, float],
+    phase: str = "val",
+) -> None:
+    """Log one evaluation round to the Python logger **and** to W&B
+    (if active).
+
+    Parameters
+    ----------
+    phase:
+        ``"val"`` or ``"test"`` — used as prefix in the log line and
+        in the W&B metric names.
+    """
+    ...
+
+
+# ── Checkpointing ──────────────────────────────────────────────────
+
+
+def save_checkpoint(model: torch.nn.Module, path: Path) -> None:
+    """Save model ``state_dict`` to *path* (creates parent dirs)."""
+    ...
+
+
+def load_checkpoint(
+    model: torch.nn.Module,
+    path: Path,
+    device: torch.device,
+) -> torch.nn.Module:
+    """Load a ``state_dict`` into *model* and return it."""
+    ...
+
+
+# ── Result persistence ──────────────────────────────────────────────
+
+
+def save_yaml(path: Path, payload: Any) -> None:
+    """Dump *payload* as YAML to *path*."""
+    ...
+
+
+def append_jsonl(path: Path, payload: Any) -> None:
+    """Append one JSON line to a ``.jsonl`` file (creates if missing)."""
+    ...
+
+
+def save_results(run_dir: Path, summary: dict) -> None:
+    """Persist a run summary as ``summary.yaml`` inside *run_dir* and
+    append it to the global ``saves/results.jsonl``."""
+    ...
+
+
+def pretty(obj: Any) -> str:
+    """JSON-pretty-print for logging."""
+    return json.dumps(obj, indent=4, default=str)

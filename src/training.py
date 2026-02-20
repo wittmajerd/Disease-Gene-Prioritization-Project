@@ -17,6 +17,7 @@ from torch.nn import BCEWithLogitsLoss
 from src.config import PipelineConfig
 from src.data import EdgeSplits, negative_sampling
 from src.evaluation import classification_metrics
+from src.utils import load_checkpoint, log_metrics, save_checkpoint
 
 
 # ── Early stopping ──────────────────────────────────────────────────
@@ -42,7 +43,19 @@ class EarlyStopper:
 
     def step(self, metric: float) -> bool:
         """Return ``True`` when training should stop."""
-        ...
+        if self.best is None:
+            self.best = metric
+            self.counter = 0
+            return False
+
+        improved = metric > self.best if self.mode == "max" else metric < self.best
+        if improved:
+            self.best = metric
+            self.counter = 0
+            return False
+
+        self.counter += 1
+        return self.counter >= self.patience
 
 
 # ── Trainer ─────────────────────────────────────────────────────────
@@ -87,7 +100,11 @@ class Trainer:
         self.logger = logger
         self.run_dir = run_dir
 
-        self.optimizer: torch.optim.Optimizer = ...
+        self.optimizer: torch.optim.Optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=cfg.training.lr,
+            weight_decay=cfg.training.weight_decay,
+        )
         self.criterion = BCEWithLogitsLoss()
         self.stopper = EarlyStopper(
             patience=cfg.training.patience,
@@ -102,6 +119,8 @@ class Trainer:
         self._best_state: dict | None = None
         self._best_metric: float = float("-inf")
         self._best_epoch: int = 0
+        self._best_metrics: Dict[str, float] | None = None
+        self._ckpt_path: Path = self.run_dir / "best_model.pth"
 
     # ── Single epoch ────────────────────────────────────────────
 
@@ -121,7 +140,33 @@ class Trainer:
         -------
         Scalar loss value.
         """
-        ...
+        self.model.train()
+        self.optimizer.zero_grad()
+
+        pos_logits = self.model(msg_edge_index_dict, pos_edges, self.src_type, self.dst_type)
+        pos_labels = torch.ones(pos_logits.size(0), device=self.device)
+
+        neg_count = int(max(1, round(pos_edges.size(1) * float(self.cfg.training.neg_ratio))))
+        num_src = int(self.model.emb[self.src_type].size(0))
+        num_dst = int(self.model.emb[self.dst_type].size(0))
+        neg_edges = negative_sampling(
+            num_src=num_src,
+            num_dst=num_dst,
+            num_samples=neg_count,
+            positive_edges=pos_edges,
+            device=self.device,
+        )
+        neg_logits = self.model(msg_edge_index_dict, neg_edges, self.src_type, self.dst_type)
+        neg_labels = torch.zeros(neg_logits.size(0), device=self.device)
+
+        logits = torch.cat([pos_logits, neg_logits], dim=0)
+        labels = torch.cat([pos_labels, neg_labels], dim=0)
+
+        loss = self.criterion(logits, labels)
+        loss.backward()
+        self.optimizer.step()
+
+        return float(loss.item())
 
     # ── Evaluation ──────────────────────────────────────────────
 
@@ -136,7 +181,29 @@ class Trainer:
         Generates negatives of the same size, computes logits,
         and returns the full metrics dict.
         """
-        ...
+        self.model.eval()
+
+        pos_logits = self.model(msg_edge_index_dict, pos_edges, self.src_type, self.dst_type)
+        num_src = int(self.model.emb[self.src_type].size(0))
+        num_dst = int(self.model.emb[self.dst_type].size(0))
+        neg_edges = negative_sampling(
+            num_src=num_src,
+            num_dst=num_dst,
+            num_samples=pos_edges.size(1),
+            positive_edges=pos_edges,
+            device=self.device,
+        )
+        neg_logits = self.model(msg_edge_index_dict, neg_edges, self.src_type, self.dst_type)
+
+        logits = torch.cat([pos_logits, neg_logits], dim=0)
+        labels = torch.cat(
+            [
+                torch.ones(pos_logits.size(0), device=self.device),
+                torch.zeros(neg_logits.size(0), device=self.device),
+            ],
+            dim=0,
+        )
+        return classification_metrics(logits, labels)
 
     # ── Full loop ───────────────────────────────────────────────
 
@@ -153,7 +220,40 @@ class Trainer:
         -------
         A summary dict with ``best_val_metrics``, ``best_epoch``, etc.
         """
-        ...
+        eval_every = max(1, int(self.cfg.training.eval_every))
+        primary = str(self.cfg.training.primary_metric)
+
+        for epoch in range(1, int(self.cfg.training.epochs) + 1):
+            loss = self._train_one_epoch(splits.msg_edge_index_dict, splits.train_edges)
+
+            if epoch % eval_every != 0:
+                continue
+
+            val_metrics = self._evaluate(splits.msg_edge_index_dict, splits.val_edges)
+            if primary not in val_metrics:
+                raise KeyError(
+                    f"Primary metric '{primary}' not found in metrics: {list(val_metrics.keys())}"
+                )
+
+            metric_value = float(val_metrics[primary])
+            log_metrics(self.logger, epoch=epoch, loss=loss, metrics=val_metrics, phase="val")
+
+            if metric_value > self._best_metric:
+                self._best_metric = metric_value
+                self._best_epoch = epoch
+                self._best_metrics = dict(val_metrics)
+                save_checkpoint(self.model, self._ckpt_path)
+
+            if self.stopper.step(metric_value):
+                self.logger.info("Early stopping at epoch %d", epoch)
+                break
+
+        return {
+            "best_epoch": self._best_epoch,
+            "best_metric": self._best_metric,
+            "best_val_metrics": self._best_metrics,
+            "checkpoint": str(self._ckpt_path),
+        }
 
     # ── Test ────────────────────────────────────────────────────
 
@@ -164,6 +264,17 @@ class Trainer:
         used for training) for message passing at test time, following
         the transductive link-prediction convention.
         """
-        ...
+        if self._ckpt_path.exists():
+            self.model = load_checkpoint(self.model, self._ckpt_path, self.device)
+
+        metrics = self._evaluate(splits.msg_edge_index_dict, splits.test_edges)
+        log_metrics(
+            self.logger,
+            epoch=self._best_epoch if self._best_epoch > 0 else 0,
+            loss=0.0,
+            metrics=metrics,
+            phase="test",
+        )
+        return metrics
 
 

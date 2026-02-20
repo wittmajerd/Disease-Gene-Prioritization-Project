@@ -16,6 +16,7 @@ from src.config import PipelineConfig, parse_args
 from src.data import (
     EdgeSplits,
     build_full_homogeneous_graph,
+    build_homogeneous_from_hetero,
     build_hetero_graph,
     get_graph_summary,
     get_node_offsets,
@@ -66,10 +67,14 @@ def _maybe_node2vec(
             edge_index.size(1),
         )
     else:
-        # Train only on the downstream subgraph.
-        # Flatten to homogeneous for Node2Vec.
-        raise NotImplementedError(
-            "Subgraph-only Node2Vec not implemented yet. Use use_full_graph=true."
+        edge_index, total_nodes, node_offsets = build_homogeneous_from_hetero(
+            data,
+            node_type_order=cfg.graph.node_types,
+        )
+        logger.info(
+            "Node2Vec: training on configured subgraph (%d nodes, %d edges).",
+            total_nodes,
+            edge_index.size(1),
         )
 
     return featurizer.fit_and_get(

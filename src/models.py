@@ -111,8 +111,7 @@ class GNNEncoder(nn.Module):
         self.convs = nn.ModuleList()
 
         for layer_idx in range(num_layers):
-                                                    # wtf
-            in_ch = -1 if layer_idx == 0 else (hidden_dim if layer_idx > 0 else hidden_dim)
+            in_ch = -1 if layer_idx == 0 else hidden_dim
             out_ch = output_dim if layer_idx == (num_layers - 1) else hidden_dim
             self.convs.append(_build_conv(layer_kind, in_ch, out_ch, heads=heads, dropout=dropout))
 
@@ -208,6 +207,14 @@ def build_encoder(metadata: tuple, model_cfg: ModelConfig) -> nn.Module:
         heads=model_cfg.heads,
         dropout=model_cfg.dropout,
     )
+
+    # Workaround for a torch.fx codegen issue on some torch/pyg versions:
+    # to_hetero may fail when traced forward contains runtime-resolved typing metadata.
+    try:
+        base_encoder.__class__.forward.__annotations__ = {}
+    except Exception:
+        pass
+
     return to_hetero(base_encoder, metadata=metadata, aggr="sum")
 
 

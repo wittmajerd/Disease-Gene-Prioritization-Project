@@ -151,6 +151,22 @@ def build_hetero_graph(raw: Any, graph_cfg: GraphConfig) -> HeteroData:
                 continue
             data[rev_key].edge_index = data[(src, rel, dst)].edge_index.flip(0)
 
+    # Ensure every node type receives messages at least from one relation.
+    # This is required for stable `to_hetero` conversion when reverse edges
+    # are disabled (otherwise some node types never get updated).
+    incoming_by_type = {ntype: 0 for ntype in data.node_types}
+    for _, _, dst in data.edge_types:
+        incoming_by_type[dst] += 1
+
+    for ntype, incoming_count in incoming_by_type.items():
+        if incoming_count > 0:
+            continue
+        num_nodes = int(data[ntype].num_nodes)
+        idx = torch.arange(num_nodes, dtype=torch.long)
+        self_key = (ntype, "self", ntype)
+        if self_key not in data.edge_types:
+            data[self_key].edge_index = torch.stack([idx, idx], dim=0)
+
     target_key = _as_edge_key(graph_cfg.target_edge)
     target_sanitized = (target_key[0], sanitize_rel(target_key[1]), target_key[2])
     if target_sanitized not in data.edge_types:
@@ -199,6 +215,76 @@ def build_full_homogeneous_graph(raw: Any) -> tuple[Tensor, int]:
 
     total_num_nodes = sum(count for _, count in offsets.values())
     return edge_index, int(total_num_nodes)
+
+
+def get_node_offsets_from_hetero(
+    data: HeteroData,
+    node_type_order: list[str] | None = None,
+) -> dict[str, tuple[int, int]]:
+    """Return ``{node_type: (start_idx, count)}`` for a constructed subgraph.
+
+    Parameters
+    ----------
+    data:
+        Input heterogeneous graph.
+    node_type_order:
+        Optional node type order. If omitted, uses ``data.node_types`` order.
+    """
+    order = list(node_type_order) if node_type_order is not None else list(data.node_types)
+    offsets: dict[str, tuple[int, int]] = {}
+    start = 0
+    for ntype in order:
+        if ntype not in data.node_types:
+            raise KeyError(f"Node type '{ntype}' missing from HeteroData")
+        count = int(data[ntype].num_nodes)
+        offsets[ntype] = (start, count)
+        start += count
+    return offsets
+
+
+def build_homogeneous_from_hetero(
+    data: HeteroData,
+    node_type_order: list[str] | None = None,
+) -> tuple[Tensor, int, dict[str, tuple[int, int]]]:
+    """Flatten a ``HeteroData`` graph into a homogeneous ``edge_index``.
+
+    Useful for Node2Vec subgraph mode.
+
+    Parameters
+    ----------
+    data:
+        Constructed heterogeneous graph.
+    node_type_order:
+        Optional ordering for global node indexing.
+
+    Returns
+    -------
+    edge_index:
+        ``[2, num_edges]`` shifted homogeneous edge tensor.
+    total_num_nodes:
+        Total nodes across included node types.
+    node_offsets:
+        ``{node_type: (start_idx, count)}`` used for slicing embeddings back.
+    """
+    offsets = get_node_offsets_from_hetero(data, node_type_order=node_type_order)
+    edge_parts: list[Tensor] = []
+
+    for (src, _, dst), edge_index in data.edge_index_dict.items():
+        src_offset = offsets[src][0]
+        dst_offset = offsets[dst][0]
+
+        shifted = edge_index.clone().long()
+        shifted[0] += src_offset
+        shifted[1] += dst_offset
+        edge_parts.append(shifted)
+
+    if edge_parts:
+        merged = torch.cat(edge_parts, dim=1)
+    else:
+        merged = torch.empty((2, 0), dtype=torch.long)
+
+    total_num_nodes = sum(count for _, count in offsets.values())
+    return merged, int(total_num_nodes), offsets
 
 
 def get_node_offsets(raw: Any) -> dict[str, tuple[int, int]]:

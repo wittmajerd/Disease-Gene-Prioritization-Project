@@ -84,7 +84,13 @@ class TrainingConfig:
     patience: int = 10
     eval_every: int = 1
     neg_ratio: float = 1.0  # #negatives / #positives
+    neg_sampling: str = "uniform"  # uniform | self_adversarial
+    adversarial_temperature: float = 1.0
+    adversarial_candidates_multiplier: int = 4
     primary_metric: str = "f1"  # metric used for early stopping & best model
+    compute_ranking_on_test: bool = True
+    ranking_k_values: list[int] = field(default_factory=lambda: [1, 3, 10])
+    max_ranking_queries: int | None = None
 
 
 @dataclass

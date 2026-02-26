@@ -11,12 +11,13 @@ from pathlib import Path
 from typing import Any, Dict
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 from torch.nn import BCEWithLogitsLoss
 
 from src.config import PipelineConfig
 from src.data import EdgeSplits, negative_sampling
-from src.evaluation import classification_metrics
+from src.evaluation import classification_metrics, ranking_metrics
 from src.utils import load_checkpoint, log_metrics, save_checkpoint
 
 
@@ -144,29 +145,101 @@ class Trainer:
         self.optimizer.zero_grad()
 
         pos_logits = self.model(msg_edge_index_dict, pos_edges, self.src_type, self.dst_type)
-        pos_labels = torch.ones(pos_logits.size(0), device=self.device)
 
         neg_count = int(max(1, round(pos_edges.size(1) * float(self.cfg.training.neg_ratio))))
         num_src = int(self.model.emb[self.src_type].size(0))
         num_dst = int(self.model.emb[self.dst_type].size(0))
-        neg_edges = negative_sampling(
-            num_src=num_src,
-            num_dst=num_dst,
-            num_samples=neg_count,
-            positive_edges=pos_edges,
-            device=self.device,
-        )
-        neg_logits = self.model(msg_edge_index_dict, neg_edges, self.src_type, self.dst_type)
-        neg_labels = torch.zeros(neg_logits.size(0), device=self.device)
 
-        logits = torch.cat([pos_logits, neg_logits], dim=0)
-        labels = torch.cat([pos_labels, neg_labels], dim=0)
+        neg_sampling_kind = str(getattr(self.cfg.training, "neg_sampling", "uniform")).lower()
+        if neg_sampling_kind == "self_adversarial":
+            cand_mult = int(max(1, getattr(self.cfg.training, "adversarial_candidates_multiplier", 4)))
+            cand_count = int(max(neg_count, neg_count * cand_mult))
 
-        loss = self.criterion(logits, labels)
+            neg_edges = negative_sampling(
+                num_src=num_src,
+                num_dst=num_dst,
+                num_samples=cand_count,
+                positive_edges=pos_edges,
+                device=self.device,
+            )
+            neg_logits = self.model(msg_edge_index_dict, neg_edges, self.src_type, self.dst_type)
+
+            temp = float(getattr(self.cfg.training, "adversarial_temperature", 1.0))
+            weights = torch.softmax(temp * neg_logits.detach(), dim=0)
+
+            pos_loss = -F.logsigmoid(pos_logits).mean()
+            neg_loss = -(weights * F.logsigmoid(-neg_logits)).sum()
+            loss = pos_loss + neg_loss
+        else:
+            pos_labels = torch.ones(pos_logits.size(0), device=self.device)
+            neg_edges = negative_sampling(
+                num_src=num_src,
+                num_dst=num_dst,
+                num_samples=neg_count,
+                positive_edges=pos_edges,
+                device=self.device,
+            )
+            neg_logits = self.model(msg_edge_index_dict, neg_edges, self.src_type, self.dst_type)
+            neg_labels = torch.zeros(neg_logits.size(0), device=self.device)
+
+            logits = torch.cat([pos_logits, neg_logits], dim=0)
+            labels = torch.cat([pos_labels, neg_labels], dim=0)
+            loss = self.criterion(logits, labels)
+
         loss.backward()
         self.optimizer.step()
 
         return float(loss.item())
+
+    @torch.no_grad()
+    def _evaluate_ranking(
+        self,
+        msg_edge_index_dict: dict,
+        pos_edges: Tensor,
+    ) -> Dict[str, float]:
+        """Query-wise ranking metrics on test positives.
+
+        For each source node in the positive test edges, ranks all destination
+        nodes and computes MRR / Hits@K.
+        """
+        self.model.eval()
+
+        k_values = list(getattr(self.cfg.training, "ranking_k_values", [1, 3, 10]))
+        max_queries = getattr(self.cfg.training, "max_ranking_queries", None)
+
+        unique_sources = torch.unique(pos_edges[0]).detach()
+        if max_queries is not None:
+            unique_sources = unique_sources[: int(max_queries)]
+
+        num_dst = int(self.model.emb[self.dst_type].size(0))
+        dst_idx = torch.arange(num_dst, device=self.device, dtype=torch.long)
+
+        per_query: list[Dict[str, float]] = []
+        for src_idx in unique_sources:
+            src_id = int(src_idx.item())
+
+            edge_mask = pos_edges[0] == src_id
+            pos_dsts = pos_edges[1][edge_mask]
+            if pos_dsts.numel() == 0:
+                continue
+
+            src_col = torch.full((num_dst,), src_id, device=self.device, dtype=torch.long)
+            edge_label_index = torch.stack([src_col, dst_idx], dim=0)
+            logits = self.model(msg_edge_index_dict, edge_label_index, self.src_type, self.dst_type)
+
+            positive_mask = torch.zeros(num_dst, device=self.device, dtype=torch.bool)
+            positive_mask[pos_dsts] = True
+            per_query.append(ranking_metrics(logits, positive_mask, k_values=k_values))
+
+        if not per_query:
+            out = {"mrr": 0.0}
+            out.update({f"hits@{k}": 0.0 for k in k_values})
+            return out
+
+        agg: Dict[str, float] = {}
+        for key in per_query[0].keys():
+            agg[key] = float(sum(m[key] for m in per_query) / len(per_query))
+        return agg
 
     # ── Evaluation ──────────────────────────────────────────────
 
@@ -268,6 +341,9 @@ class Trainer:
             self.model = load_checkpoint(self.model, self._ckpt_path, self.device)
 
         metrics = self._evaluate(splits.msg_edge_index_dict, splits.test_edges)
+        if bool(getattr(self.cfg.training, "compute_ranking_on_test", True)):
+            metrics.update(self._evaluate_ranking(splits.msg_edge_index_dict, splits.test_edges))
+
         log_metrics(
             self.logger,
             epoch=self._best_epoch if self._best_epoch > 0 else 0,

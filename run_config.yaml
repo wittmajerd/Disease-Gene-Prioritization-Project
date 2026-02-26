@@ -69,7 +69,13 @@ training:
   patience: 10
   eval_every: 5
   neg_ratio: 1.0                              # #negatives / #positives per batch
+  neg_sampling: "self_adversarial"                     # uniform | self_adversarial
+  adversarial_temperature: 1.0
+  adversarial_candidates_multiplier: 4
   primary_metric: "f1"                        # metric for early stopping & best model
+  compute_ranking_on_test: true
+  ranking_k_values: [1, 3, 10]
+  max_ranking_queries: 100                   # null = all test source nodes
 
 # ── Logging & output ────────────────────────────────────────────────
 logging:

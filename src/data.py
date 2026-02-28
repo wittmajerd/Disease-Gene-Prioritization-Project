@@ -4,9 +4,13 @@ Responsibilities
 ────────────────
 1. Load raw BioKG pickle.
 2. Build a ``HeteroData`` driven purely by ``GraphConfig`` (node/edge types).
-3. Split the *target* edge into train / val / test with proper message-passing
+3. Split edges into train / val / test with proper message-passing
    edge separation (no information leakage).
-4. Provide a negative sampler that filters out true positives.
+   - ``split_target_edges`` — legacy single-target-edge mode.
+   - ``split_all_edges``   — KG-completion mode (splits every relation).
+4. Provide negative samplers:
+   - ``negative_sampling``  — legacy random (src, dst) pairs.
+   - ``corrupt_triples``    — KGE-style head/tail corruption.
 """
 
 from __future__ import annotations
@@ -488,3 +492,199 @@ def negative_sampling(
 
     neg_edges = torch.tensor([chosen_src, chosen_dst], dtype=torch.long, device=device)
     return neg_edges
+
+
+# ── KG-completion splits (all edge types) ──────────────────────────
+
+
+@dataclass
+class KGSplits:
+    """Train / val / test splits for **all** edge types (KG completion).
+
+    Unlike :class:`EdgeSplits` which only splits a single target edge,
+    this splits every configured *supervision* edge type independently.
+
+    Attributes
+    ----------
+    train:
+        ``{edge_type: [2, E_train]}`` training supervision triples.
+    val:
+        ``{edge_type: [2, E_val]}`` validation triples.
+    test:
+        ``{edge_type: [2, E_test]}`` test triples.
+    msg_edge_index_dict:
+        Message-passing edges for the GNN — train supervision edges only,
+        plus their reverses and self-loops.
+    num_nodes_dict:
+        ``{node_type: count}`` for negative sampling bounds.
+    all_positives:
+        All edges before splitting, per supervision edge type.
+        Used by the filtered evaluation protocol.
+    supervision_edge_types:
+        The edge types that are predicted (excludes ``rev_*`` and ``self``).
+    """
+
+    train: dict[tuple[str, str, str], Tensor]
+    val: dict[tuple[str, str, str], Tensor]
+    test: dict[tuple[str, str, str], Tensor]
+    msg_edge_index_dict: dict[tuple[str, str, str], Tensor]
+    num_nodes_dict: dict[str, int]
+    all_positives: dict[tuple[str, str, str], Tensor]
+    supervision_edge_types: list[tuple[str, str, str]]
+
+
+def split_all_edges(
+    data: HeteroData,
+    split_cfg: SplitConfig,
+    seed: int = 42,
+) -> KGSplits:
+    """Split every supervision edge type into train / val / test.
+
+    *Supervision* edge types are those that are **not** reverse edges
+    (``rev_*``) and **not** self-loops (``self``).  Reverse edges in the
+    ``msg_edge_index_dict`` are automatically mirrored from the forward
+    train split so there is no information leakage.
+
+    Parameters
+    ----------
+    data:
+        The full ``HeteroData`` (after ``build_hetero_graph``).
+    split_cfg:
+        Contains ``train_ratio`` and ``val_ratio``.
+    seed:
+        For reproducibility.
+
+    Returns
+    -------
+    A :class:`KGSplits` instance.
+    """
+    train_ratio = float(split_cfg.train_ratio)
+    val_ratio = float(split_cfg.val_ratio)
+    if train_ratio <= 0 or val_ratio < 0 or (train_ratio + val_ratio) >= 1:
+        raise ValueError("Invalid split ratios. Require: train>0, val>=0, train+val<1")
+
+    # Identify supervision edge types (skip reverse + self-loop)
+    supervision_types: list[tuple[str, str, str]] = []
+    for src, rel, dst in data.edge_types:
+        if rel.startswith("rev_") or rel == "self":
+            continue
+        supervision_types.append((src, rel, dst))
+
+    if not supervision_types:
+        raise ValueError("No supervision edge types found (all are reverse or self-loop).")
+
+    train_dict: dict[tuple[str, str, str], Tensor] = {}
+    val_dict: dict[tuple[str, str, str], Tensor] = {}
+    test_dict: dict[tuple[str, str, str], Tensor] = {}
+    all_pos: dict[tuple[str, str, str], Tensor] = {}
+
+    generator = torch.Generator(device="cpu").manual_seed(seed)
+
+    for edge_type in supervision_types:
+        ei = data[edge_type].edge_index
+        num_edges = int(ei.size(1))
+        all_pos[edge_type] = ei.clone()
+
+        if num_edges < 3:
+            # Too few edges to split — put all in train
+            train_dict[edge_type] = ei.clone()
+            val_dict[edge_type] = torch.empty((2, 0), dtype=torch.long)
+            test_dict[edge_type] = torch.empty((2, 0), dtype=torch.long)
+            continue
+
+        perm = torch.randperm(num_edges, generator=generator)
+        train_end = max(1, int(train_ratio * num_edges))
+        val_end = max(train_end + 1, int((train_ratio + val_ratio) * num_edges))
+        val_end = min(val_end, num_edges - 1)  # ensure test is non-empty
+
+        train_dict[edge_type] = ei[:, perm[:train_end]].clone()
+        val_dict[edge_type] = ei[:, perm[train_end:val_end]].clone()
+        test_dict[edge_type] = ei[:, perm[val_end:]].clone()
+
+    # Build msg_edge_index_dict
+    msg_dict: dict[tuple[str, str, str], Tensor] = {}
+
+    for edge_type in supervision_types:
+        msg_dict[edge_type] = train_dict[edge_type]
+        src, rel, dst = edge_type
+        rev_key = (dst, f"rev_{rel}", src)
+        if rev_key in data.edge_types:
+            msg_dict[rev_key] = train_dict[edge_type].flip(0)
+
+    # Preserve self-loop edges
+    for src, rel, dst in data.edge_types:
+        if rel == "self" and (src, rel, dst) not in msg_dict:
+            msg_dict[(src, rel, dst)] = data[(src, rel, dst)].edge_index.clone()
+
+    num_nodes = {ntype: int(data[ntype].num_nodes) for ntype in data.node_types}
+
+    return KGSplits(
+        train=train_dict,
+        val=val_dict,
+        test=test_dict,
+        msg_edge_index_dict=msg_dict,
+        num_nodes_dict=num_nodes,
+        all_positives=all_pos,
+        supervision_edge_types=supervision_types,
+    )
+
+
+# ── KGE-style head/tail corruption ────────────────────────────────
+
+
+def corrupt_triples(
+    pos_edges: Tensor,
+    num_src: int,
+    num_dst: int,
+    num_neg_per_pos: int = 1,
+    mode: str = "both",
+) -> Tensor:
+    """Generate corrupted triples by randomly replacing head or tail.
+
+    This is the standard KGE negative sampling strategy: for each
+    positive ``(h, t)``, replace either *h* with a random entity of the
+    same type, or *t* with a random entity of the same type.
+
+    No filtering of true positives is applied — this matches the common
+    practice during training (filtering is only needed at evaluation).
+
+    Parameters
+    ----------
+    pos_edges:
+        ``[2, E]`` positive edges.
+    num_src:
+        Total number of source-type entities.
+    num_dst:
+        Total number of destination-type entities.
+    num_neg_per_pos:
+        How many negatives to generate per positive.
+    mode:
+        ``"head"`` — corrupt source only.
+        ``"tail"`` — corrupt destination only.
+        ``"both"`` — randomly corrupt head or tail (50/50).
+
+    Returns
+    -------
+    ``[2, E * num_neg_per_pos]`` corrupted edges.
+    """
+    device = pos_edges.device
+    num_pos = pos_edges.size(1)
+    total_neg = num_pos * num_neg_per_pos
+
+    heads = pos_edges[0].repeat_interleave(num_neg_per_pos)
+    tails = pos_edges[1].repeat_interleave(num_neg_per_pos)
+
+    if mode == "tail":
+        tails = torch.randint(0, num_dst, (total_neg,), device=device)
+    elif mode == "head":
+        heads = torch.randint(0, num_src, (total_neg,), device=device)
+    elif mode == "both":
+        corrupt_tail = torch.rand(total_neg, device=device) > 0.5
+        num_tail = int(corrupt_tail.sum().item())
+        num_head = total_neg - num_tail
+        tails[corrupt_tail] = torch.randint(0, num_dst, (num_tail,), device=device)
+        heads[~corrupt_tail] = torch.randint(0, num_src, (num_head,), device=device)
+    else:
+        raise ValueError(f"Unknown corruption mode: {mode!r}. Use 'head', 'tail', or 'both'.")
+
+    return torch.stack([heads, tails], dim=0)

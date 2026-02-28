@@ -42,6 +42,7 @@ class SplitConfig:
 
     train_ratio: float = 0.8
     val_ratio: float = 0.1
+    mode: str = "target"  # "target" = single target edge | "all" = KG completion
 
 
 @dataclass
@@ -91,6 +92,13 @@ class TrainingConfig:
     compute_ranking_on_test: bool = True
     ranking_k_values: list[int] = field(default_factory=lambda: [1, 3, 10])
     max_ranking_queries: int | None = None
+
+    # ── KG completion settings (used when split.mode == "all") ───
+    loss_fn: str = "self_adversarial"  # bce | self_adversarial | bpr | margin | infonce
+    corruption_mode: str = "both"      # head | tail | both
+    margin: float = 6.0               # margin for margin-based ranking loss
+    infonce_temperature: float = 0.07  # temperature for InfoNCE loss
+    max_val_ranking_queries: int = 200 # subsample validation ranking queries
 
 
 @dataclass

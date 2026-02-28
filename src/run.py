@@ -15,12 +15,14 @@ import torch
 from src.config import PipelineConfig, parse_args
 from src.data import (
     EdgeSplits,
+    KGSplits,
     build_full_homogeneous_graph,
     build_homogeneous_from_hetero,
     build_hetero_graph,
     get_graph_summary,
     get_node_offsets,
     load_raw_data,
+    split_all_edges,
     split_target_edges,
 )
 from src.models import HeteroLinkPredictor, Node2VecFeaturizer
@@ -105,12 +107,34 @@ def main() -> None:
     logger.info("Graph summary:\n%s", pretty(get_graph_summary(data)))
 
     # ── 3. Split ────────────────────────────────────────────────
-    splits: EdgeSplits = split_target_edges(
-        data,
-        target_edge=cfg.graph.target_edge,
-        split_cfg=cfg.split,
-        seed=cfg.seed,
-    )
+    split_mode = getattr(cfg.split, "mode", "target")
+
+    if split_mode == "all":
+        splits: EdgeSplits | KGSplits = split_all_edges(
+            data,
+            split_cfg=cfg.split,
+            seed=cfg.seed,
+        )
+        logger.info(
+            "KG-completion split: %d supervision edge types, "
+            "train/val/test triples per type logged below.",
+            len(splits.supervision_edge_types),
+        )
+        for et in splits.supervision_edge_types:
+            logger.info(
+                "  %s: train=%d  val=%d  test=%d",
+                et,
+                splits.train[et].size(1),
+                splits.val[et].size(1),
+                splits.test[et].size(1),
+            )
+    else:
+        splits = split_target_edges(
+            data,
+            target_edge=cfg.graph.target_edge,
+            split_cfg=cfg.split,
+            seed=cfg.seed,
+        )
 
     # ── 4. Optional Node2Vec features ───────────────────────────
     init_embs = _maybe_node2vec(cfg, raw, data, device, logger)
@@ -127,12 +151,21 @@ def main() -> None:
 
     # Move data to device
     data = data.to(device)
-    splits.train_edges = splits.train_edges.to(device)
-    splits.val_edges = splits.val_edges.to(device)
-    splits.test_edges = splits.test_edges.to(device)
-    splits.msg_edge_index_dict = {
-        k: v.to(device) for k, v in splits.msg_edge_index_dict.items()
-    }
+    if isinstance(splits, KGSplits):
+        splits.train = {k: v.to(device) for k, v in splits.train.items()}
+        splits.val = {k: v.to(device) for k, v in splits.val.items()}
+        splits.test = {k: v.to(device) for k, v in splits.test.items()}
+        splits.msg_edge_index_dict = {
+            k: v.to(device) for k, v in splits.msg_edge_index_dict.items()
+        }
+        # all_positives stays on CPU for filter dict building
+    else:
+        splits.train_edges = splits.train_edges.to(device)
+        splits.val_edges = splits.val_edges.to(device)
+        splits.test_edges = splits.test_edges.to(device)
+        splits.msg_edge_index_dict = {
+            k: v.to(device) for k, v in splits.msg_edge_index_dict.items()
+        }
 
     # ── 6. Train ────────────────────────────────────────────────
     trainer = Trainer(

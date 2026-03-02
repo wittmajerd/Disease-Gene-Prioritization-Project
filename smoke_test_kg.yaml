@@ -61,6 +61,7 @@ training:
   margin: 6.0
   infonce_temperature: 0.07
   max_val_ranking_queries: 50
+  kg_batch_size: 8192
 
 logging:
   use_wandb: false

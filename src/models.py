@@ -270,26 +270,107 @@ class MLPDecoder(nn.Module):
 
 
 class DistMultDecoder(nn.Module):
-    """Score = ∑(z_src ⊙ R ⊙ z_dst) with a learnable diagonal relation matrix."""
+    """Score = ∑(z_src ⊙ R ⊙ z_dst) with a single learnable diagonal.
+
+    Suitable for the legacy single-edge mode where only one relation is
+    being predicted.
+    """
 
     def __init__(self, dim: int) -> None:
         super().__init__()
         self.rel_diag = nn.Parameter(torch.ones(dim))
 
-    def forward(self, z_src: Tensor, z_dst: Tensor, edge_label_index: Tensor) -> Tensor:
+    def forward(
+        self,
+        z_src: Tensor,
+        z_dst: Tensor,
+        edge_label_index: Tensor,
+        rel_type: str | None = None,  # ignored — kept for interface compat
+    ) -> Tensor:
         src = z_src[edge_label_index[0]]
         dst = z_dst[edge_label_index[1]]
         return (src * self.rel_diag * dst).sum(dim=-1)
 
 
-def build_decoder(model_cfg: ModelConfig) -> nn.Module:
-    """Factory: instantiate the requested decoder."""
+class MultiRelationDistMultDecoder(nn.Module):
+    """DistMult with a separate diagonal relation vector per edge type.
+
+    Each relation ``(src_type, rel_name, dst_type)`` gets its own
+    ``[D]`` diagonal parameter, so the model can learn relation-specific
+    interaction patterns.
+
+    Call ``register_relations(edge_types)`` after construction (done
+    automatically by ``HeteroLinkPredictor``).
+    """
+
+    def __init__(self, dim: int) -> None:
+        super().__init__()
+        self.dim = dim
+        self.rel_diags = nn.ParameterDict()
+
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _key(edge_type: tuple[str, str, str] | str) -> str:
+        """Canonical string key for a ``(src, rel, dst)`` triple."""
+        if isinstance(edge_type, (list, tuple)):
+            return "__".join(edge_type)
+        return str(edge_type)
+
+    def register_relations(self, edge_types: list[tuple[str, str, str]]) -> None:
+        """Create one diagonal parameter per relation type."""
+        for et in edge_types:
+            key = self._key(et)
+            if key not in self.rel_diags:
+                self.rel_diags[key] = nn.Parameter(torch.ones(self.dim))
+
+    # ------------------------------------------------------------------
+
+    def forward(
+        self,
+        z_src: Tensor,
+        z_dst: Tensor,
+        edge_label_index: Tensor,
+        rel_type: str | None = None,
+    ) -> Tensor:
+        src = z_src[edge_label_index[0]]
+        dst = z_dst[edge_label_index[1]]
+
+        if rel_type is not None and rel_type in self.rel_diags:
+            r = self.rel_diags[rel_type]
+        else:
+            # Fallback: average of all relation vectors (e.g. for legacy
+            # mode or unknown relation).  Should rarely happen.
+            r = torch.stack(list(self.rel_diags.values())).mean(dim=0)
+
+        return (src * r * dst).sum(dim=-1)
+
+
+def build_decoder(
+    model_cfg: ModelConfig,
+    edge_types: list[tuple[str, str, str]] | None = None,
+) -> nn.Module:
+    """Factory: instantiate the requested decoder.
+
+    Parameters
+    ----------
+    model_cfg:
+        Architecture hyper-parameters.
+    edge_types:
+        All edge types in the graph.  Only used by
+        ``MultiRelationDistMultDecoder`` to register per-relation
+        parameters.  Can be ``None`` for decoders that don't need it.
+    """
     kind = model_cfg.decoder_type.lower()
     if kind == "dot_product":
         return DotProductDecoder()
     if kind == "mlp":
         return MLPDecoder(input_dim=model_cfg.output_dim, hidden_dim=model_cfg.hidden_dim)
     if kind == "distmult":
+        if edge_types is not None and len(edge_types) > 1:
+            dec = MultiRelationDistMultDecoder(dim=model_cfg.output_dim)
+            dec.register_relations(edge_types)
+            return dec
         return DistMultDecoder(dim=model_cfg.output_dim)
     raise ValueError(f"Unknown decoder type: {model_cfg.decoder_type}")
 
@@ -356,7 +437,7 @@ class HeteroLinkPredictor(nn.Module):
             self.emb[ntype] = param
 
         self.encoder = build_encoder(metadata=metadata, model_cfg=model_cfg)
-        self.decoder = build_decoder(model_cfg)
+        self.decoder = build_decoder(model_cfg, edge_types=list(metadata[1]))
 
     # ------------------------------------------------------------------
 
@@ -383,6 +464,7 @@ class HeteroLinkPredictor(nn.Module):
         edge_label_index: Tensor,
         src_type: str,
         dst_type: str,
+        rel_type: str | None = None,
     ) -> Tensor:
         """Score a batch of candidate edges.
 
@@ -394,11 +476,21 @@ class HeteroLinkPredictor(nn.Module):
             ``[2, E]`` indices (row-0 = src, row-1 = dst).
         src_type, dst_type:
             Node type strings to index into ``z_dict``.
+        rel_type:
+            Canonical relation key for multi-relation decoders
+            (``"src__rel__dst"``).  Ignored by decoders that don't
+            need it (DotProduct, MLP).
 
         Returns
         -------
         ``[E]`` logits.
         """
+        # Build rel_type key if not provided but decoder expects it
+        if rel_type is None and isinstance(self.decoder, MultiRelationDistMultDecoder):
+            rel_type = MultiRelationDistMultDecoder._key((src_type, "", dst_type))
+
+        if isinstance(self.decoder, (DistMultDecoder, MultiRelationDistMultDecoder)):
+            return self.decoder(z_dict[src_type], z_dict[dst_type], edge_label_index, rel_type)
         return self.decoder(z_dict[src_type], z_dict[dst_type], edge_label_index)
 
     def forward(
@@ -407,10 +499,11 @@ class HeteroLinkPredictor(nn.Module):
         edge_label_index: Tensor,
         src_type: str,
         dst_type: str,
+        rel_type: str | None = None,
     ) -> Tensor:
         """Convenience: encode → decode in one call."""
         z_dict = self.encode(edge_index_dict)
-        return self.decode(z_dict, edge_label_index, src_type, dst_type)
+        return self.decode(z_dict, edge_label_index, src_type, dst_type, rel_type)
 
 
 # ═══════════════════════════════════════════════════════════════════

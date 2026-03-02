@@ -99,6 +99,7 @@ class TrainingConfig:
     margin: float = 6.0               # margin for margin-based ranking loss
     infonce_temperature: float = 0.07  # temperature for InfoNCE loss
     max_val_ranking_queries: int = 200 # subsample validation ranking queries
+    kg_batch_size: int = 16384         # mini-batch size per edge type in KG mode
 
 
 @dataclass

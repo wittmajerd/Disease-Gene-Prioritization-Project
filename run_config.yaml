@@ -84,6 +84,7 @@ training:
   margin: 6.0                                # for margin loss
   infonce_temperature: 0.07                   # for InfoNCE loss
   max_val_ranking_queries: 200                # subsampled validation ranking queries
+  kg_batch_size: 16384                        # mini-batch size per edge type in KG mode
 
 # ── Logging & output ────────────────────────────────────────────────
 logging:

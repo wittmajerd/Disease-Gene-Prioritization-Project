@@ -29,7 +29,7 @@ from src.evaluation import (
     compute_filtered_rank,
     ranking_metrics,
 )
-from src.models import HeteroLinkPredictor
+from src.models import HeteroLinkPredictor, MultiRelationDistMultDecoder
 from src.utils import load_checkpoint, log_metrics, save_checkpoint
 
 
@@ -334,7 +334,10 @@ class Trainer:
     ) -> float:
         """One training epoch over all supervision edge types.
 
-        Single encode pass, then score + loss for each relation type.
+        Each edge type is processed in mini-batches of size
+        ``cfg.training.kg_batch_size`` to avoid OOM on large relations.
+        The encoder is run once; gradients accumulate across batches
+        then a single optimiser step is taken.
         """
         self.model.train()
         self.optimizer.zero_grad()
@@ -347,66 +350,77 @@ class Trainer:
         loss_fn = getattr(self.cfg.training, "loss_fn", "self_adversarial")
         corruption_mode = getattr(self.cfg.training, "corruption_mode", "both")
         neg_per_pos = max(1, int(self.cfg.training.neg_ratio))
+        batch_size = int(getattr(self.cfg.training, "kg_batch_size", 16384))
 
         for edge_type in splits.supervision_edge_types:
             src_type, rel, dst_type = edge_type
             pos_edges = splits.train[edge_type]
+            rel_key = MultiRelationDistMultDecoder._key(edge_type)
 
-            if pos_edges.size(1) == 0:
+            n_edges = pos_edges.size(1)
+            if n_edges == 0:
                 continue
-
-            pos_scores = self.model.decode(z_dict, pos_edges, src_type, dst_type)
 
             num_src = splits.num_nodes_dict[src_type]
             num_dst = splits.num_nodes_dict[dst_type]
-            neg_edges = corrupt_triples(
-                pos_edges, num_src, num_dst,
-                num_neg_per_pos=neg_per_pos,
-                mode=corruption_mode,
-            )
 
-            neg_scores = self.model.decode(z_dict, neg_edges, src_type, dst_type)
+            # Shuffle edges each epoch
+            perm = torch.randperm(n_edges, device=self.device)
 
-            if loss_fn == "bce":
-                all_scores = torch.cat([pos_scores, neg_scores])
-                labels = torch.cat([
-                    torch.ones_like(pos_scores),
-                    torch.zeros_like(neg_scores),
-                ])
-                edge_loss = self.criterion(all_scores, labels)
-            elif loss_fn == "bpr":
-                edge_loss = _bpr_loss(pos_scores, neg_scores)
-            elif loss_fn == "margin":
-                edge_loss = _margin_loss(
-                    pos_scores, neg_scores,
-                    margin=getattr(self.cfg.training, "margin", 6.0),
+            for start in range(0, n_edges, batch_size):
+                batch_idx = perm[start : start + batch_size]
+                batch_pos = pos_edges[:, batch_idx]
+                b = batch_pos.size(1)
+
+                pos_scores = self.model.decode(z_dict, batch_pos, src_type, dst_type, rel_key)
+
+                neg_edges = corrupt_triples(
+                    batch_pos, num_src, num_dst,
+                    num_neg_per_pos=neg_per_pos,
+                    mode=corruption_mode,
                 )
-            elif loss_fn == "infonce":
-                edge_loss = _infonce_loss(
-                    pos_scores, neg_scores,
-                    temperature=getattr(self.cfg.training, "infonce_temperature", 0.07),
-                )
-            elif loss_fn == "self_adversarial":
-                edge_loss = _self_adversarial_loss(
-                    pos_scores, neg_scores,
-                    temperature=getattr(self.cfg.training, "adversarial_temperature", 1.0),
-                )
-            else:
-                raise ValueError(f"Unknown loss function: {loss_fn}")
+                neg_scores = self.model.decode(z_dict, neg_edges, src_type, dst_type, rel_key)
 
-            n_triples = pos_edges.size(1)
-            total_loss = total_loss + edge_loss * n_triples
-            total_triples += n_triples
+                if loss_fn == "bce":
+                    all_scores = torch.cat([pos_scores, neg_scores])
+                    labels = torch.cat([
+                        torch.ones_like(pos_scores),
+                        torch.zeros_like(neg_scores),
+                    ])
+                    edge_loss = self.criterion(all_scores, labels)
+                elif loss_fn == "bpr":
+                    edge_loss = _bpr_loss(pos_scores, neg_scores)
+                elif loss_fn == "margin":
+                    edge_loss = _margin_loss(
+                        pos_scores, neg_scores,
+                        margin=getattr(self.cfg.training, "margin", 6.0),
+                    )
+                elif loss_fn == "infonce":
+                    edge_loss = _infonce_loss(
+                        pos_scores, neg_scores,
+                        temperature=getattr(self.cfg.training, "infonce_temperature", 0.07),
+                    )
+                elif loss_fn == "self_adversarial":
+                    edge_loss = _self_adversarial_loss(
+                        pos_scores, neg_scores,
+                        temperature=getattr(self.cfg.training, "adversarial_temperature", 1.0),
+                    )
+                else:
+                    raise ValueError(f"Unknown loss function: {loss_fn}")
 
-        if total_triples > 0:
-            avg_loss = total_loss / total_triples
-        else:
-            avg_loss = total_loss
+                # Scale loss by batch proportion so gradient magnitude
+                # is independent of batch_size.
+                weight = b / max(1, n_edges)
+                (edge_loss * weight).backward(retain_graph=True)
 
-        avg_loss.backward()
+                total_loss = total_loss + edge_loss.detach() * b
+                total_triples += b
+
         self.optimizer.step()
 
-        return float(avg_loss.item())
+        if total_triples > 0:
+            return float((total_loss / total_triples).item())
+        return 0.0
 
     @torch.no_grad()
     def _evaluate_ranking_kg(
@@ -436,6 +450,7 @@ class Trainer:
             if pos_edges is None or pos_edges.size(1) == 0:
                 continue
 
+            rel_key = MultiRelationDistMultDecoder._key(edge_type)
             num_src = splits.num_nodes_dict[src_type]
             num_dst = splits.num_nodes_dict[dst_type]
 
@@ -456,7 +471,7 @@ class Trainer:
                 src_col = torch.full((num_dst,), h, device=self.device, dtype=torch.long)
                 dst_col = torch.arange(num_dst, device=self.device, dtype=torch.long)
                 edge_idx = torch.stack([src_col, dst_col], dim=0)
-                tail_scores = self.model.decode(z_dict, edge_idx, src_type, dst_type)
+                tail_scores = self.model.decode(z_dict, edge_idx, src_type, dst_type, rel_key)
 
                 true_tails = tail_filter.get((edge_type, h), torch.tensor([], dtype=torch.long))
                 all_ranks.append(compute_filtered_rank(tail_scores, t, true_tails.to(self.device)))
@@ -465,7 +480,7 @@ class Trainer:
                 src_col = torch.arange(num_src, device=self.device, dtype=torch.long)
                 dst_col = torch.full((num_src,), t, device=self.device, dtype=torch.long)
                 edge_idx = torch.stack([src_col, dst_col], dim=0)
-                head_scores = self.model.decode(z_dict, edge_idx, src_type, dst_type)
+                head_scores = self.model.decode(z_dict, edge_idx, src_type, dst_type, rel_key)
 
                 true_heads = head_filter.get((edge_type, t), torch.tensor([], dtype=torch.long))
                 all_ranks.append(compute_filtered_rank(head_scores, h, true_heads.to(self.device)))

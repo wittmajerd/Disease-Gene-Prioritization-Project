@@ -1,0 +1,36 @@
+# Choose one dataset mode:
+# 1) builtin dataset
+dataset:
+  kind: builtin
+  name: primekg
+
+# 2) custom triples files (uncomment and adjust paths)
+# dataset:
+#   kind: custom_path
+#   name: primekg_custom
+#   kwargs:
+#     training_path: dataverse_files_primekg/train.tsv
+#     testing_path: dataverse_files_primekg/test.tsv
+#     validation_path: dataverse_files_primekg/valid.tsv
+#     create_inverse_triples: true
+
+model:
+  name: TransE
+  kwargs:
+    embedding_dim: 200
+
+optimizer: Adam
+optimizer_kwargs:
+  lr: 0.001
+
+training_kwargs:
+  num_epochs: 200
+  batch_size: 256
+  checkpoint_name: pykeen_checkpoint.pt
+  checkpoint_directory: checkpoints
+  checkpoint_on_failure: true
+
+random_seed: 42
+
+save:
+  directory: results

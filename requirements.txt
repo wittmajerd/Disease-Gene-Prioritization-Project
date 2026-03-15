@@ -1,3 +1,4 @@
 # python 3.11
 pykeen
+pyyaml
 # pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126

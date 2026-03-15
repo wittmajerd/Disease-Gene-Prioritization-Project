@@ -1,8 +1,14 @@
 /.vscode
-/data
-/model_saves
+
 *__pycache__*
 *.pyc
 *.pth
 *.pkl
+*.csv
+*.tsv
+
+/data
+/primekg
 /saves
+/results
+/model_saves

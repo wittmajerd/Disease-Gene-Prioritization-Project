@@ -1,0 +1,36 @@
+source:
+  primekg_dir: primekg
+  kg_file: kg.csv
+  nodes_file: nodes.csv
+  disease_features_file: disease_features.csv
+  drug_features_file: drug_features.csv
+
+filters:
+  relation_whitelist: []
+  node_type_filter_enabled: true
+  allowed_node_types:
+    - disease
+    - gene/protein
+  drop_duplicates: true
+  remove_self_loops: false
+
+splits:
+  train: 0.9
+  validation: 0.05
+  test: 0.05
+  random_seed: 42
+
+# not working yet
+features:
+  enabled: true
+  include_node_metadata: true
+  include_disease_descriptions: true
+  include_drug_descriptions: true
+
+export:
+  enabled: false
+  output_dir: dataset_snapshots
+
+runtime:
+  max_rows: null
+  verbose: true

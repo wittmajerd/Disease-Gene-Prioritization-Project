@@ -2,4 +2,7 @@
 pykeen
 pyyaml
 pandas
+matplotlib
+networkx
+seaborn
 # pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126

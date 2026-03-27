@@ -1,19 +1,3 @@
-"""BioKG dataset exploration and graph metric computation.
-
-All functions accept the raw BioKG pickle object and return structured
-data (dicts, DataFrames, arrays) suitable for inspection in a Jupyter
-notebook.  Plotting helpers return ``matplotlib`` figure/axes pairs so
-they can be displayed inline or saved externally.
-
-Usage (in notebook)::
-
-    from src.data import load_raw_data
-    from src.analysis import *
-
-    raw = load_raw_data("ogbl_biokg_raw.pkl")
-    print(global_stats(raw))
-"""
-
 from __future__ import annotations
 
 from collections import Counter, defaultdict
@@ -21,15 +5,6 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-import torch
-from torch import Tensor
-
-from src.data import (
-    _raw_edge_dict,
-    _raw_num_nodes_dict,
-    build_full_homogeneous_graph,
-    get_node_offsets,
-)
 
 
 # =====================================================================

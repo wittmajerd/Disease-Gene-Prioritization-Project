@@ -1,600 +1,712 @@
-from __future__ import annotations
-
-from collections import Counter, defaultdict
-from dataclasses import dataclass
+# %%
+from dataclasses import dataclass as Dataclass
 from typing import Any
 
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
+from IPython.display import display
 
 
-def normalize_kg_dataframe(
-    df: pd.DataFrame,
-    *,
-    head_candidates: tuple[str, ...] = ("head", "x_id", "x_index", "source", "source_id"),
-    relation_candidates: tuple[str, ...] = (
-        "display_relation",
-        "relation",
-        "relation_type",
-        "predicate",
-        "edge_type",
-    ),
-    tail_candidates: tuple[str, ...] = ("tail", "y_id", "y_index", "target", "target_id"),
-    head_type_candidates: tuple[str, ...] = ("head_type", "x_type", "source_type"),
-    tail_type_candidates: tuple[str, ...] = ("tail_type", "y_type", "target_type"),
-) -> pd.DataFrame:
-    """Normalize a KG DataFrame to standard columns.
+# api-t ki kéne találni az analízishez ami nem az mint deeig volt lehet ötleteket venni de kinda szar volt az eddigi
+# Mi legyen az elemzésben?
 
-    Required output columns: head, relation, tail
-    Optional output columns: head_type, tail_type
+# kg.csv betöltése maradjon df mert abban benne van minden ami kell és ki is lehet számolni mindent amit kell
+
+# nem szeretnék osztályt meg ilyenek csak szipla fgveket amik megkapnak egy df-et és abból kiszámolnak dolgokat
+
+# statok:
+# - node és edge típusok és darabszámok
+# - conf mx szerű tábla a connectionokről - gráf, node centralitás
+# - density, komponensek - izolált csúcsok?
+# - node statistics tipus szerint
+# - node degree hists
+# - edge type szerinti stats
+# - rel cardinality - bár minde n-n nem?
+# - disease és protein részletesebb elemzése
+# - metapath analysis - milyen útvonalak vannak d és p közt
+# - a dis hány százalákából van él prot-ba és esetleg metapathen keresztül milyen hosszú utakon hogy százalék kapcsolódik
+# - power law
+# - two (3, 4...) hop reachability
+
+# feature-ök elemzése külön, egyáltalán hogy használhatóak ezek a szövegesek
+
+# Core graph summary: global stats, degree extraction, connected components, isolated-node reporting.
+# Type-aware schema analysis: node-type stats, connectivity matrix, schema edge counts, normalized type-confusion matrix.
+# Relation analysis: relation counts, density, cardinality heuristic, symmetry ratio, source and destination degree summaries.
+# Target-analysis block: disease-to-protein deep dive, cold-start counts, hub proteins, direct coverage.
+# Path and structure analysis: metapath enumeration, metapath reachability, power-law summary.
+# Feature analysis: feature-readiness / joinability report for disease features or future feature tables.
+
+
+# TODO jaaa igen ezeket a statokat úgy is érdekes lenne megnézni hogy előtte szűrünk
+
+
+
+# DF header: relation, display_relation, x_index, x_id, x_type, x_name, x_source, y_index, y_id, y_type, y_name, y_source
+# %%
+df = pd.read_csv("primekg/kg.csv", low_memory=False)
+
+
+# %%
+
+def filter_df(df, filter_type="nodes", types=None):
+    df = df.copy()
+    if filter_type == "nodes":
+        df = df[df["x_type"].isin(types) & df["y_type"].isin(types)] if types is not None else df
+    elif filter_type == "edges":
+        df = df[df["relation"].isin(types)] if types is not None else df
+
+    return df
+
+def extract_nodes_df(df: DataFrame) -> DataFrame:
+    """Build unique node table from edge list.
+
+    Output should include at least:
+    - node_id
+    - node_type (optional if source data has types)
+
+    Focus:
+    - Union of head and tail ids.
+    - Preserve type if available; flag conflicts if an id appears with many types.
     """
 
-    def pick_col(candidates: tuple[str, ...], label: str) -> str:
-        for name in candidates:
-            if name in df.columns:
-                return name
-        raise ValueError(f"Missing {label} column. Tried: {candidates}. Found: {list(df.columns)}")
+    head_types = df[["x_index", "x_type"]].rename(columns={"x_index": "node_id", "x_type": "node_type"})
+    tail_types = df[["y_index", "y_type"]].rename(columns={"y_index": "node_id", "y_type": "node_type"})
+    all_types = pd.concat([head_types, tail_types], ignore_index=True).drop_duplicates()
 
-    head_col = pick_col(head_candidates, "head")
-    relation_col = pick_col(relation_candidates, "relation")
-    tail_col = pick_col(tail_candidates, "tail")
+    return all_types.reset_index(drop=True)
 
-    out = df[[head_col, relation_col, tail_col]].rename(
-        columns={head_col: "head", relation_col: "relation", tail_col: "tail"}
+
+def compute_degrees(df: DataFrame) -> DataFrame:
+    """Compute per-node in/out/total degree table.
+
+    Output columns:
+    - node_index
+    - in_degree
+    - out_degree
+    - total_degree
+    - node_type (when available)
+
+    Focus:
+    - Reusable base table for node stats, hubs, isolates, and power-law analysis.
+    """
+    out_deg = df.groupby("x_index").size().rename("out_degree")
+    in_deg = df.groupby("y_index").size().rename("in_degree")
+
+    deg = pd.concat([out_deg, in_deg], axis=1).fillna(0).astype(int)
+    deg["total_degree"] = deg["out_degree"] + deg["in_degree"]
+    deg = deg.reset_index().rename(columns={"index": "node_id"})
+
+    nodes = extract_nodes_df(df)
+    deg = nodes[["node_id", "node_type"]].merge(
+        deg,
+        on="node_id",
+        how="left",
     )
-    out = out.dropna(subset=["head", "relation", "tail"]).copy()
-    out["head"] = out["head"].astype(str)
-    out["relation"] = out["relation"].astype(str)
-    out["tail"] = out["tail"].astype(str)
+    for col in ["in_degree", "out_degree", "total_degree"]:
+        deg[col] = deg[col].fillna(0).astype(int)
 
-    head_type_col = next((c for c in head_type_candidates if c in df.columns), None)
-    tail_type_col = next((c for c in tail_type_candidates if c in df.columns), None)
-    if head_type_col is not None:
-        out["head_type"] = df.loc[out.index, head_type_col].astype("string")
-    if tail_type_col is not None:
-        out["tail_type"] = df.loc[out.index, tail_type_col].astype("string")
-
-    return out.reset_index(drop=True)
+    return deg.sort_values("node_id").reset_index(drop=True)
 
 
-def triples_factory_to_df(triples_factory: Any) -> pd.DataFrame:
-    """Convert a PyKEEN TriplesFactory to a normalized triples DataFrame."""
-    mapped = triples_factory.mapped_triples.cpu().numpy()
-    e_map = triples_factory.entity_id_to_label
-    r_map = triples_factory.relation_id_to_label
+def reverse_edge_consistency_check(df: DataFrame) -> DataFrame:
+    key = df[["x_index", "y_index"]]
+    reversed_key = key.rename(columns={"x_index": "y_index", "y_index": "x_index"})
 
-    heads = [e_map[int(i)] for i in mapped[:, 0]]
-    relations = [r_map[int(i)] for i in mapped[:, 1]]
-    tails = [e_map[int(i)] for i in mapped[:, 2]]
+    key = df[["x_index", "y_index", "relation"]].drop_duplicates()
+    reversed_key = key.rename(columns={"x_index": "y_index", "y_index": "x_index"})
 
-    return pd.DataFrame({"head": heads, "relation": relations, "tail": tails})
-
-
-@dataclass(slots=True)
-class ComponentStats:
-    num_components: int
-    largest_component_size: int
-    smallest_component_size: int
-    component_sizes: list[int]
+    paired = key.merge(
+        reversed_key,
+        on=["x_index", "y_index", "relation"],
+        how="left",
+        indicator=True,
+    )
+    print(paired["_merge"].unique())
 
 
-class KGAnalyzer:
-    """Standalone analyzer for triple-based knowledge graphs."""
+# %%
+def calc_global_stats(df: DataFrame) -> dict[str, Any]:
+    """Compute high-level KG summary metrics.
 
-    def __init__(
-        self,
-        triples_df: pd.DataFrame,
-        *,
-        head_col: str = "head",
-        relation_col: str = "relation",
-        tail_col: str = "tail",
-        head_type_col: str | None = "head_type",
-        tail_type_col: str | None = "tail_type",
-    ):
-        required = {head_col, relation_col, tail_col}
-        missing = [c for c in required if c not in triples_df.columns]
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}")
+    Should report:
+    - total_nodes, total_edges
+    - num_node_types, num_edge_types
+    - node_types, edge_types
+    - density (directed graph density)
+    - self_loops count
+    - duplicate_edge_rows count
 
-        self.df = triples_df[[head_col, relation_col, tail_col]].copy()
-        self.df.columns = ["head", "relation", "tail"]
-        self.df["head"] = self.df["head"].astype(str)
-        self.df["relation"] = self.df["relation"].astype(str)
-        self.df["tail"] = self.df["tail"].astype(str)
+    Focus:
+    - Fast, deterministic summary for sanity checks.
+    """
+    e = df[["x_index", "y_index", "relation", "x_type", "y_type"]]
+    nodes = extract_nodes_df(e)
+    total_nodes = int(nodes.shape[0])
+    total_edges = int(e.shape[0])
+    unique_edges = int(e[["x_index", "relation", "y_index"]].drop_duplicates().shape[0])
+    duplicate_edge_rows = total_edges - unique_edges
+    # a source miatt van 370 duplicate ezeket majd kiszűjük
+    self_loops = int((e["x_index"] == e["y_index"]).sum())
 
-        self.has_types = False
-        if head_type_col and head_type_col in triples_df.columns:
-            self.df["head_type"] = triples_df[head_type_col].astype("string")
-            self.has_types = True
-        if tail_type_col and tail_type_col in triples_df.columns:
-            self.df["tail_type"] = triples_df[tail_type_col].astype("string")
-            self.has_types = True
+    density = 0.0
+    if total_nodes > 1:
+        density = total_edges / float(total_nodes * (total_nodes - 1))
 
-        entities = pd.unique(pd.concat([self.df["head"], self.df["tail"]], ignore_index=True))
-        self.entities = pd.Index(entities.astype(str))
-        self.entity_to_idx = {e: i for i, e in enumerate(self.entities)}
+    node_types = []
+    if "node_type" in nodes.columns:
+        node_types = sorted(nodes["node_type"].dropna().unique().tolist())
 
-        self.head_idx = self.df["head"].map(self.entity_to_idx).to_numpy(np.int64)
-        self.tail_idx = self.df["tail"].map(self.entity_to_idx).to_numpy(np.int64)
+    edge_types = sorted(e["relation"].dropna().unique().tolist())
 
-    def global_stats(self) -> dict[str, Any]:
-        n_nodes = len(self.entities)
-        n_edges = len(self.df)
-        n_rel = int(self.df["relation"].nunique())
-        density = n_edges / (n_nodes * (n_nodes - 1)) if n_nodes > 1 else 0.0
+    return {
+        "total_nodes": total_nodes,
+        "total_edges": total_edges,
+        "num_node_types": len(node_types),
+        "num_edge_types": len(edge_types),
+        "node_types": node_types,
+        "edge_types": edge_types,
+        "density": float(density),
+        "self_loops": self_loops,
+        "duplicate_edge_rows": int(duplicate_edge_rows),
+    }
 
-        out = {
-            "total_nodes": n_nodes,
-            "total_edges": n_edges,
-            "unique_relations": n_rel,
-            "density": float(density),
-            "self_loops": int((self.df["head"] == self.df["tail"]).sum()),
-            "duplicate_triples": int(self.df.duplicated(["head", "relation", "tail"]).sum()),
+# %%
+def connected_components_summary(df: DataFrame) -> dict[str, Any]:
+    """Analyze weakly connected components.
+
+    Should report:
+    - num_components
+    - largest_component_size
+    - smallest_component_size
+    - component_sizes (sorted desc)
+    - isolated_node_count (size-1 components) ?
+
+    Focus:
+    - Component fragmentation and isolate diagnostics.
+    """
+    e = df[["x_index", "y_index", "relation", "x_type", "y_type"]]
+    nodes = extract_nodes_df(e)
+    node_ids = nodes["node_id"].tolist()
+    node_set = set(node_ids)
+
+    if not node_ids:
+        return {
+            "num_components": 0,
+            "largest_component_size": 0,
+            "smallest_component_size": 0,
+            "component_sizes": [],
+            "isolated_node_count": 0,
         }
-        if self.has_types:
-            out["head_types"] = int(self.df["head_type"].nunique(dropna=True)) if "head_type" in self.df else 0
-            out["tail_types"] = int(self.df["tail_type"].nunique(dropna=True)) if "tail_type" in self.df else 0
-        return out
 
-    def relation_stats(self) -> pd.DataFrame:
-        rows: list[dict[str, Any]] = []
-        for rel, grp in self.df.groupby("relation", sort=False):
-            heads = grp["head"].value_counts()
-            tails = grp["tail"].value_counts()
-            avg_tph = float(heads.mean()) if not heads.empty else 0.0
-            avg_hpt = float(tails.mean()) if not tails.empty else 0.0
-            h_label = "1" if avg_tph < 1.5 else "N"
-            t_label = "1" if avg_hpt < 1.5 else "N"
-            rows.append(
-                {
-                    "relation": rel,
-                    "edge_count": int(len(grp)),
-                    "unique_heads": int(heads.size),
-                    "unique_tails": int(tails.size),
-                    "avg_tails_per_head": avg_tph,
-                    "avg_heads_per_tail": avg_hpt,
-                    "cardinality": f"{h_label}-to-{t_label}",
-                }
-            )
+    adj: dict[str, set[str]] = {nid: set() for nid in node_ids}
+    for h, t in e[["x_index", "y_index"]].itertuples(index=False, name=None):
+        if h in node_set and t in node_set:
+            adj[h].add(t)
+            adj[t].add(h)
 
-        out = pd.DataFrame(rows).sort_values("edge_count", ascending=False)
-        return out.reset_index(drop=True)
+    visited: set[str] = set()
+    comp_sizes: list[int] = []
+    for nid in node_ids:
+        if nid in visited:
+            continue
+        stack = [nid]
+        visited.add(nid)
+        size = 0
+        while stack:
+            cur = stack.pop()
+            size += 1
+            for nxt in adj[cur]:
+                if nxt not in visited:
+                    visited.add(nxt)
+                    stack.append(nxt)
+        comp_sizes.append(size)
 
-    def degree_stats(self) -> pd.DataFrame:
-        out_deg = np.bincount(self.head_idx, minlength=len(self.entities))
-        in_deg = np.bincount(self.tail_idx, minlength=len(self.entities))
-        total_deg = out_deg + in_deg
+    comp_sizes.sort(reverse=True)
+    return {
+        "num_components": int(len(comp_sizes)),
+        "largest_component_size": int(comp_sizes[0]),
+        "smallest_component_size": int(comp_sizes[-1]),
+        "component_sizes": comp_sizes,
+        "isolated_node_count": int(sum(1 for s in comp_sizes if s == 1)),
+    }
 
-        ent_df = pd.DataFrame(
+# %%
+def node_type_stats(edges_df: DataFrame, degrees_df: DataFrame | None = None) -> DataFrame:
+    """Compute node-degree statistics grouped by node type.
+
+    Should include for each type:
+    - node_count
+    - mean/median/std/min/max degree
+    - p90/p99 degree
+    - isolated_nodes (degree == 0)
+
+    Focus:
+    - Heavy-tail behavior and imbalance across entity types.
+    """
+    deg = compute_degrees(edges_df) if degrees_df is None else degrees_df.copy()
+
+    rows: list[dict[str, Any]] = []
+    for ntype, grp in deg.groupby("node_type", dropna=False):
+        td = grp["total_degree"]
+        rows.append(
             {
-                "entity": self.entities,
-                "in_degree": in_deg,
-                "out_degree": out_deg,
-                "degree": total_deg,
+                "node_type": str(ntype),
+                "node_count": int(grp.shape[0]),
+                "mean_degree": float(td.mean()),
+                "median_degree": float(td.median()),
+                "std_degree": float(td.std(ddof=0)),
+                "min_degree": int(td.min()),
+                "max_degree": int(td.max()),
+                "p90_degree": float(td.quantile(0.9)),
+                "p99_degree": float(td.quantile(0.99)),
+                "isolated_nodes": int((td == 0).sum()),
+            }
+        )
+    return pd.DataFrame(rows).sort_values("node_count", ascending=False).reset_index(drop=True)
+
+# %%
+def relation_type_stats(edges_df: DataFrame) -> DataFrame:
+    """Compute per-relation structural statistics.
+
+    Should include:
+    - relation, src_type, dst_type
+    - edge_count
+    - relation_density (edges / possible src-dst pairs)
+    - unique_heads, unique_tails
+    - avg_tails_per_head, avg_heads_per_tail
+    - relation_class (1-1 / 1-N / N-1 / N-N using threshold heuristic)
+
+    Focus:
+    - Relation cardinality behavior and sparsity per relation.
+    """
+    e = _canonical_edges(edges_df)
+
+    if "head_type" not in e.columns:
+        e["head_type"] = "unknown"
+    if "tail_type" not in e.columns:
+        e["tail_type"] = "unknown"
+
+    rows: list[dict[str, Any]] = []
+    grouped = e.groupby(["relation", "head_type", "tail_type"], dropna=False)
+    for (rel, src_t, dst_t), g in grouped:
+        edge_count = int(g.shape[0])
+        unique_heads = int(g["head"].nunique())
+        unique_tails = int(g["tail"].nunique())
+
+        possible_pairs = max(unique_heads * unique_tails, 1)
+        density = edge_count / float(possible_pairs)
+
+        tails_per_head = g.groupby("head")["tail"].nunique()
+        heads_per_tail = g.groupby("tail")["head"].nunique()
+        avg_tph = float(tails_per_head.mean()) if not tails_per_head.empty else 0.0
+        avg_hpt = float(heads_per_tail.mean()) if not heads_per_tail.empty else 0.0
+
+        head_side = "1" if avg_tph < 1.5 else "N"
+        tail_side = "1" if avg_hpt < 1.5 else "N"
+        relation_class = f"{head_side}-{tail_side}"
+
+        rows.append(
+            {
+                "relation": str(rel),
+                "src_type": str(src_t),
+                "dst_type": str(dst_t),
+                "edge_count": edge_count,
+                "relation_density": float(density),
+                "unique_heads": unique_heads,
+                "unique_tails": unique_tails,
+                "avg_tails_per_head": avg_tph,
+                "avg_heads_per_tail": avg_hpt,
+                "relation_class": relation_class,
             }
         )
 
-        if self.has_types and "head_type" in self.df and "tail_type" in self.df:
-            type_map: dict[str, str] = {}
-            head_types = self.df[["head", "head_type"]].dropna().drop_duplicates()
-            tail_types = self.df[["tail", "tail_type"]].dropna().drop_duplicates()
-            for row in head_types.itertuples(index=False):
-                type_map[str(row.head)] = str(row.head_type)
-            for row in tail_types.itertuples(index=False):
-                type_map.setdefault(str(row.tail), str(row.tail_type))
-            ent_df["entity_type"] = ent_df["entity"].map(type_map).fillna("unknown")
+    return pd.DataFrame(rows).sort_values("edge_count", ascending=False).reset_index(drop=True)
 
-        return ent_df
+# %%
+def connectivity_matrix(edges_df: DataFrame, normalize: bool = False) -> DataFrame:
+    """Build source-type vs destination-type edge matrix.
 
-    def power_law_summary(self, *, min_degree: int = 1) -> dict[str, float]:
-        deg = self.degree_stats()["degree"].to_numpy(np.int64)
-        deg = deg[deg >= min_degree]
-        if deg.size == 0:
-            return {"exponent": float("nan"), "r_squared": float("nan")}
+    - normalize=False: raw counts
+    - normalize=True: row-normalized proportions
 
-        counts = Counter(deg.tolist())
-        x = np.array(sorted(counts.keys()), dtype=np.float64)
-        y = np.array([counts[int(v)] for v in x], dtype=np.float64)
+    Focus:
+    - Schema-level connectivity view and confusion-matrix-style table.
+    """
+    e = _canonical_edges(edges_df)
+    if "head_type" not in e.columns or "tail_type" not in e.columns:
+        raise ValueError("connectivity_matrix requires x_type/y_type or head_type/tail_type columns")
 
-        lx = np.log10(x)
-        ly = np.log10(y)
-        A = np.vstack([lx, np.ones_like(lx)]).T
-        slope, intercept = np.linalg.lstsq(A, ly, rcond=None)[0]
-
-        pred = slope * lx + intercept
-        ss_res = float(np.sum((ly - pred) ** 2))
-        ss_tot = float(np.sum((ly - np.mean(ly)) ** 2))
-        r2 = 1.0 - (ss_res / ss_tot) if ss_tot > 0 else float("nan")
-
-        return {"exponent": float(-slope), "r_squared": float(r2)}
-
-    def connected_components(self) -> ComponentStats:
-        n = len(self.entities)
-        parent = np.arange(n, dtype=np.int64)
-
-        def find(x: int) -> int:
-            while parent[x] != x:
-                parent[x] = parent[parent[x]]
-                x = int(parent[x])
-            return x
-
-        def union(a: int, b: int) -> None:
-            ra = find(a)
-            rb = find(b)
-            if ra != rb:
-                parent[ra] = rb
-
-        for s, t in zip(self.head_idx, self.tail_idx):
-            union(int(s), int(t))
-
-        sizes = Counter(find(i) for i in range(n))
-        comp_sizes = sorted((int(v) for v in sizes.values()), reverse=True)
-
-        return ComponentStats(
-            num_components=len(comp_sizes),
-            largest_component_size=comp_sizes[0] if comp_sizes else 0,
-            smallest_component_size=comp_sizes[-1] if comp_sizes else 0,
-            component_sizes=comp_sizes,
-        )
-
-    def connectivity_matrix(self) -> pd.DataFrame:
-        if not ("head_type" in self.df and "tail_type" in self.df):
-            raise ValueError("Type-aware connectivity needs head_type and tail_type columns.")
-
-        ct = (
-            self.df.dropna(subset=["head_type", "tail_type"])
-            .groupby(["head_type", "tail_type"]) 
-            .size()
-            .rename("count")
-            .reset_index()
-        )
-        mat = ct.pivot(index="head_type", columns="tail_type", values="count").fillna(0).astype(np.int64)
-        return mat.sort_index(axis=0).sort_index(axis=1)
-
-    def type_confusion_matrix(self, *, normalize: bool = False) -> pd.DataFrame:
-        """Return type-to-type edge count matrix.
-
-        If normalize=True, rows are normalized to probabilities.
-        """
-        mat = self.connectivity_matrix().astype(np.float64)
-        if normalize:
-            row_sum = mat.sum(axis=1).replace(0.0, np.nan)
-            mat = mat.div(row_sum, axis=0).fillna(0.0)
-        return mat
-
-    def relation_symmetry_stats(self, *, min_edges: int = 1) -> pd.DataFrame:
-        """Estimate symmetry per relation.
-
-        For each relation, computes how many edges have reverse-direction counterpart
-        under the same relation, i.e., (h, r, t) and (t, r, h).
-        """
-        rows: list[dict[str, Any]] = []
-        for rel, grp in self.df.groupby("relation", sort=False):
-            n_edges = int(len(grp))
-            if n_edges < min_edges:
-                continue
-
-            pairs = set(zip(grp["head"].tolist(), grp["tail"].tolist()))
-            if not pairs:
-                continue
-
-            reverse_hits = sum(1 for (h, t) in pairs if (t, h) in pairs)
-            symmetry_ratio = reverse_hits / len(pairs)
-
-            rows.append(
-                {
-                    "relation": rel,
-                    "edge_count": n_edges,
-                    "unique_pairs": int(len(pairs)),
-                    "reverse_hits": int(reverse_hits),
-                    "symmetry_ratio": float(symmetry_ratio),
-                }
-            )
-
-        if not rows:
-            return pd.DataFrame(
-                columns=["relation", "edge_count", "unique_pairs", "reverse_hits", "symmetry_ratio"]
-            )
-
-        out = pd.DataFrame(rows).sort_values(["symmetry_ratio", "edge_count"], ascending=[False, False])
-        return out.reset_index(drop=True)
-
-    def schema_edge_type_counts(self) -> pd.DataFrame:
-        """Return schema-level type graph edges with counts.
-
-        Output columns: head_type, tail_type, edge_count, unique_relations, relations
-        """
-        if not ("head_type" in self.df and "tail_type" in self.df):
-            raise ValueError("Schema type graph needs head_type and tail_type columns.")
-
-        typed = self.df.dropna(subset=["head_type", "tail_type"]).copy()
-        if typed.empty:
-            return pd.DataFrame(
-                columns=["head_type", "tail_type", "edge_count", "unique_relations", "relations"]
-            )
-
-        grouped = typed.groupby(["head_type", "tail_type"], sort=False)
-        rows = []
-        for (head_type, tail_type), grp in grouped:
-            rels = sorted(grp["relation"].astype(str).unique().tolist())
-            rows.append(
-                {
-                    "head_type": str(head_type),
-                    "tail_type": str(tail_type),
-                    "edge_count": int(len(grp)),
-                    "unique_relations": int(len(rels)),
-                    "relations": rels,
-                }
-            )
-
-        return pd.DataFrame(rows).sort_values("edge_count", ascending=False).reset_index(drop=True)
-
-    def target_relation_analysis(self, relation: str, *, top_k: int = 20) -> dict[str, Any]:
-        grp = self.df[self.df["relation"] == relation]
-        if grp.empty:
-            raise ValueError(f"Relation not found: {relation}")
-
-        head_deg = grp["head"].value_counts()
-        tail_deg = grp["tail"].value_counts()
-
-        return {
-            "relation": relation,
-            "edges": int(len(grp)),
-            "unique_heads": int(grp["head"].nunique()),
-            "unique_tails": int(grp["tail"].nunique()),
-            "head_degree_mean": float(head_deg.mean()) if not head_deg.empty else 0.0,
-            "tail_degree_mean": float(tail_deg.mean()) if not tail_deg.empty else 0.0,
-            "top_heads": head_deg.head(top_k).to_dict(),
-            "top_tails": tail_deg.head(top_k).to_dict(),
-        }
-
-    def metapath_analysis_sampled(
-        self,
-        *,
-        src_type: str,
-        dst_type: str,
-        max_hops: int = 3,
-        max_start_nodes: int = 500,
-        random_seed: int = 42,
-    ) -> pd.DataFrame:
-        if max_hops < 1:
-            raise ValueError("max_hops must be >= 1")
-        if not ("head_type" in self.df and "tail_type" in self.df):
-            raise ValueError("Metapath type analysis needs head_type and tail_type columns.")
-
-        typed = self.df.dropna(subset=["head_type", "tail_type"])
-        if typed.empty:
-            return pd.DataFrame(columns=["path", "length", "count"])
-
-        # Schema-level exploration: relation-typed transitions.
-        edges = typed[["head_type", "relation", "tail_type"]].drop_duplicates()
-        adj: dict[str, list[tuple[str, str, str]]] = defaultdict(list)
-        for row in edges.itertuples(index=False):
-            adj[str(row.head_type)].append((str(row.head_type), str(row.relation), str(row.tail_type)))
-
-        paths: Counter[str] = Counter()
-
-        def dfs(current_type: str, depth: int, acc: list[tuple[str, str, str]]) -> None:
-            if depth > max_hops:
-                return
-            if current_type == dst_type and acc:
-                label = " -> ".join(f"{s}[{r}]{d}" for s, r, d in acc)
-                paths[label] += 1
-            for edge in adj.get(current_type, []):
-                acc.append(edge)
-                dfs(edge[2], depth + 1, acc)
-                acc.pop()
-
-        dfs(src_type, 0, [])
-
-        if not paths:
-            return pd.DataFrame(columns=["path", "length", "count"])
-
-        rows = [
-            {"path": p, "length": p.count("->") + 1, "count": c}
-            for p, c in paths.items()
-        ]
-        return pd.DataFrame(rows).sort_values(["length", "count"], ascending=[True, False]).reset_index(drop=True)
-
-    def feature_readiness_report(
-        self,
-        features_df: pd.DataFrame,
-        *,
-        feature_key_col: str = "node_index",
-    ) -> dict[str, Any]:
-        if feature_key_col not in features_df.columns:
-            raise ValueError(f"Feature key column missing: {feature_key_col}")
-
-        feature_keys = set(features_df[feature_key_col].dropna().astype(str))
-        graph_keys = set(self.entities.astype(str))
-        overlap = graph_keys.intersection(feature_keys)
-
-        out: dict[str, Any] = {
-            "graph_entities": len(graph_keys),
-            "feature_entities": len(feature_keys),
-            "joinable_entities": len(overlap),
-            "coverage_ratio": len(overlap) / len(graph_keys) if graph_keys else 0.0,
-            "missing_feature_entities": len(graph_keys - feature_keys),
-            "orphan_feature_rows": len(feature_keys - graph_keys),
-        }
-
-        if self.has_types:
-            deg_df = self.degree_stats()
-            if "entity_type" in deg_df.columns:
-                per_type = (
-                    deg_df.assign(has_feature=deg_df["entity"].isin(feature_keys))
-                    .groupby("entity_type")["has_feature"]
-                    .agg(["size", "sum"]) 
-                    .rename(columns={"size": "entities", "sum": "joinable"})
-                    .reset_index()
-                )
-                per_type["coverage_ratio"] = per_type["joinable"] / per_type["entities"]
-                out["coverage_by_type"] = per_type.sort_values("entities", ascending=False).to_dict(
-                    orient="records"
-                )
-
-        return out
-
-
-# -------------------- plotting helpers --------------------
-
-
-def _require_matplotlib():
-    try:
-        import matplotlib.pyplot as plt
-    except Exception as exc:  # pragma: no cover
-        raise RuntimeError("matplotlib is required for plotting. Install it with: pip install matplotlib") from exc
-    return plt
-
-
-def plot_relation_distribution(relation_df: pd.DataFrame, *, top_n: int = 20):
-    plt = _require_matplotlib()
-    top = relation_df.head(top_n)
-    fig, ax = plt.subplots(figsize=(12, 5))
-    ax.bar(top["relation"], top["edge_count"])
-    ax.set_title(f"Top {top_n} relations by edge count")
-    ax.set_ylabel("Edge count")
-    ax.tick_params(axis="x", rotation=75)
-    fig.tight_layout()
-    return fig
-
-
-def plot_degree_distribution(degree_df: pd.DataFrame):
-    plt = _require_matplotlib()
-    deg = degree_df["degree"].to_numpy(np.int64)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-    axes[0].hist(deg, bins=80)
-    axes[0].set_title("Degree distribution")
-    axes[0].set_xlabel("Degree")
-    axes[0].set_ylabel("Frequency")
-
-    positive = deg[deg > 0]
-    axes[1].hist(positive, bins=80, log=True)
-    axes[1].set_title("Degree distribution (log-y)")
-    axes[1].set_xlabel("Degree")
-    axes[1].set_ylabel("Frequency (log)")
-    fig.tight_layout()
-    return fig
-
-
-def plot_component_sizes(component_stats: ComponentStats, *, top_n: int = 30):
-    plt = _require_matplotlib()
-    vals = component_stats.component_sizes[:top_n]
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.bar(np.arange(len(vals)), vals)
-    ax.set_title(f"Top {top_n} component sizes")
-    ax.set_xlabel("Component rank")
-    ax.set_ylabel("Size")
-    fig.tight_layout()
-    return fig
-
-
-def plot_connectivity_heatmap(connectivity_df: pd.DataFrame):
-    plt = _require_matplotlib()
-    fig, ax = plt.subplots(figsize=(8, 6))
-    im = ax.imshow(connectivity_df.values)
-    ax.set_xticks(np.arange(connectivity_df.shape[1]))
-    ax.set_xticklabels(connectivity_df.columns, rotation=60, ha="right")
-    ax.set_yticks(np.arange(connectivity_df.shape[0]))
-    ax.set_yticklabels(connectivity_df.index)
-    ax.set_title("Type-to-type connectivity")
-    fig.colorbar(im, ax=ax, label="Edge count")
-    fig.tight_layout()
-    return fig
-
-
-def plot_type_confusion_heatmap(confusion_df: pd.DataFrame, *, title: str = "Type Confusion Matrix"):
-    plt = _require_matplotlib()
-    try:
-        import seaborn as sns
-    except Exception as exc:  # pragma: no cover
-        raise RuntimeError("seaborn is required for confusion heatmap plotting. Install it with: pip install seaborn") from exc
-
-    fig, ax = plt.subplots(figsize=(9, 7))
-
-    is_integer_like = np.allclose(confusion_df.values, np.round(confusion_df.values))
-    fmt = ",.0f" if is_integer_like else ".3f"
-    sns.heatmap(
-        confusion_df,
-        annot=True,
-        fmt=fmt,
-        cmap="YlOrRd",
-        linewidths=0.5,
-        ax=ax,
+    mat = (
+        e.groupby(["head_type", "tail_type"]).size().rename("edge_count").reset_index().pivot(
+            index="head_type", columns="tail_type", values="edge_count"
+        ).fillna(0)
     )
+    mat = mat.astype(float if normalize else int)
+    if normalize:
+        row_sums = mat.sum(axis=1).replace(0, np.nan)
+        mat = mat.div(row_sums, axis=0).fillna(0.0)
+    return mat
 
-    ax.set_title(title)
-    ax.set_xlabel("Destination Type")
-    ax.set_ylabel("Source Type")
-    fig.tight_layout()
-    return fig
 
+def schema_edge_type_counts(edges_df: DataFrame) -> DataFrame:
+    """Summarize schema edges at (head_type, tail_type) granularity.
 
-def plot_schema_type_graph(
-    schema_edges_df: pd.DataFrame,
-    *,
-    min_edge_count: int = 1,
-    max_label_edges: int = 20,
-):
-    """Plot directed schema graph where nodes are types and edges are type pairs."""
-    plt = _require_matplotlib()
-    try:
-        import networkx as nx
-    except Exception as exc:  # pragma: no cover
-        raise RuntimeError("networkx is required for schema graph plotting. Install it with: pip install networkx") from exc
+    Should include:
+    - head_type, tail_type
+    - edge_count
+    - num_relations
+    - relations (compact relation list)
 
-    use_df = schema_edges_df[schema_edges_df["edge_count"] >= min_edge_count].copy()
-    if use_df.empty:
-        raise ValueError("No schema edges left after applying min_edge_count filter.")
+    Focus:
+    - Graph schema map for plotting and reporting.
+    """
+    e = _canonical_edges(edges_df)
+    if "head_type" not in e.columns or "tail_type" not in e.columns:
+        raise ValueError("schema_edge_type_counts requires x_type/y_type or head_type/tail_type columns")
 
-    g = nx.DiGraph()
-    for row in use_df.itertuples(index=False):
-        g.add_edge(str(row.head_type), str(row.tail_type), weight=float(row.edge_count))
+    out = (
+        e.groupby(["head_type", "tail_type"]).agg(
+            edge_count=("relation", "size"),
+            num_relations=("relation", "nunique"),
+            relations=("relation", lambda x: ", ".join(sorted(set(x)))),
+        )
+    ).reset_index()
 
-    fig, ax = plt.subplots(figsize=(10, 8))
-    pos = nx.spring_layout(g, seed=42, k=1.2)
+    return out.sort_values("edge_count", ascending=False).reset_index(drop=True)
 
-    weights = np.array([data["weight"] for _, _, data in g.edges(data=True)], dtype=np.float64)
-    min_w = float(weights.min())
-    max_w = float(weights.max())
-    width = 1.0 + 5.0 * ((weights - min_w) / (max_w - min_w + 1e-9))
+# %%
+def target_relation_analysis(
+    edges_df: DataFrame,
+    src_type: str = "disease",
+    dst_type: str = "gene/protein",
+    relation: str | None = None,
+    top_k: int = 20,
+) -> dict[str, Any]:
+    """Deep-dive on disease-protein (or any selected) target edges.
 
-    nx.draw_networkx_nodes(g, pos, node_size=2200, node_color="#9ecae1", ax=ax)
-    nx.draw_networkx_labels(g, pos, font_size=9, ax=ax)
-    nx.draw_networkx_edges(
-        g,
-        pos,
-        width=width.tolist(),
-        arrows=True,
-        arrowstyle="-|>",
-        arrowsize=16,
-        edge_color="#4c72b0",
-        alpha=0.85,
-        ax=ax,
-    )
+    Should report:
+    - total_edges, unique_src, unique_dst
+    - src_degree_stats, dst_degree_stats
+    - cold_start_src_lte2, cold_start_src_zero
+    - top_src_hubs, top_dst_hubs
 
-    top_edges = use_df.sort_values("edge_count", ascending=False).head(max_label_edges)
-    edge_labels = {
-        (str(row.head_type), str(row.tail_type)): str(int(row.edge_count))
-        for row in top_edges.itertuples(index=False)
+    Focus:
+    - Prioritization-target diagnostics (coverage, sparsity, hubs).
+    """
+    e = _canonical_edges(edges_df)
+    if "head_type" not in e.columns or "tail_type" not in e.columns:
+        raise ValueError("target_relation_analysis requires x_type/y_type or head_type/tail_type columns")
+
+    sub = e[(e["head_type"] == src_type) & (e["tail_type"] == dst_type)].copy()
+    if relation is not None:
+        sub = sub[sub["relation"] == relation].copy()
+
+    src_deg = sub.groupby("head").size().rename("degree")
+    dst_deg = sub.groupby("tail").size().rename("degree")
+
+    return {
+        "src_type": src_type,
+        "dst_type": dst_type,
+        "relation": relation,
+        "total_edges": int(sub.shape[0]),
+        "unique_src": int(sub["head"].nunique()),
+        "unique_dst": int(sub["tail"].nunique()),
+        "src_degree_stats": _degree_stats_from_counts(src_deg),
+        "dst_degree_stats": _degree_stats_from_counts(dst_deg),
+        "cold_start_src_lte2": int((src_deg <= 2).sum()) if not src_deg.empty else 0,
+        "cold_start_src_zero": int(
+            len(set(e.loc[e["head_type"] == src_type, "head"].unique()) - set(src_deg.index.tolist()))
+        ),
+        "top_src_hubs": [(k, int(v)) for k, v in src_deg.sort_values(ascending=False).head(top_k).items()],
+        "top_dst_hubs": [(k, int(v)) for k, v in dst_deg.sort_values(ascending=False).head(top_k).items()],
     }
-    nx.draw_networkx_edge_labels(g, pos, edge_labels=edge_labels, font_size=8, ax=ax)
 
-    ax.set_title("Schema Type Graph")
-    ax.axis("off")
-    fig.tight_layout()
-    return fig
+# %%
+def metapath_schema_analysis(
+    edges_df: DataFrame,
+    src_type: str,
+    dst_type: str,
+    max_hops: int = 3,
+) -> DataFrame:
+    """Enumerate valid schema metapaths between two node types.
+
+    Should include:
+    - metapath_types (type sequence)
+    - relation_sequence
+    - hop_length
+
+    Focus:
+    - Discover message-passing routes available to multi-hop models.
+    """
+    e = _canonical_edges(edges_df)
+    if "head_type" not in e.columns or "tail_type" not in e.columns:
+        raise ValueError("metapath_schema_analysis requires x_type/y_type or head_type/tail_type columns")
+    if max_hops < 1:
+        return pd.DataFrame(columns=["metapath_types", "relation_sequence", "hop_length"])
+
+    schema_edges = e[["head_type", "relation", "tail_type"]].drop_duplicates()
+    adjacency: dict[str, list[tuple[str, str]]] = {}
+    for h_t, rel, t_t in schema_edges.itertuples(index=False, name=None):
+        adjacency.setdefault(h_t, []).append((str(rel), str(t_t)))
+
+    rows: list[dict[str, Any]] = []
+
+    def dfs(cur_type: str, path_types: list[str], rel_seq: list[str], depth: int) -> None:
+        if depth > max_hops:
+            return
+        if depth >= 1 and cur_type == dst_type:
+            rows.append(
+                {
+                    "metapath_types": " -> ".join(path_types),
+                    "relation_sequence": " -> ".join(rel_seq),
+                    "hop_length": depth,
+                }
+            )
+        if depth == max_hops:
+            return
+        for rel, nxt in adjacency.get(cur_type, []):
+            dfs(nxt, path_types + [nxt], rel_seq + [rel], depth + 1)
+
+    dfs(src_type, [src_type], [], 0)
+    out = pd.DataFrame(rows)
+    if out.empty:
+        return out
+    return out.drop_duplicates().sort_values(["hop_length", "metapath_types"]).reset_index(drop=True)
 
 
-__all__ = [
-    "ComponentStats",
-    "KGAnalyzer",
-    "normalize_kg_dataframe",
-    "triples_factory_to_df",
-    "plot_component_sizes",
-    "plot_connectivity_heatmap",
-    "plot_schema_type_graph",
-    "plot_type_confusion_heatmap",
-    "plot_degree_distribution",
-    "plot_relation_distribution",
-]
+def metapath_reachability(
+    edges_df: DataFrame,
+    src_type: str = "disease",
+    dst_type: str = "gene/protein",
+    max_hops: int = 3,
+    max_sources: int | None = 1000,
+) -> DataFrame:
+    """Estimate source-node reachability to destination type by hop count.
+
+    Should return one row per hop with:
+    - hop
+    - reachable_sources
+    - total_sources
+    - reachable_fraction
+
+    Focus:
+    - Quantify how much extra neighborhood signal appears at 2/3 hops.
+    """
+    e = _canonical_edges(edges_df)
+    if "head_type" not in e.columns or "tail_type" not in e.columns:
+        raise ValueError("metapath_reachability requires x_type/y_type or head_type/tail_type columns")
+    if max_hops < 1:
+        return pd.DataFrame(columns=["hop", "reachable_sources", "total_sources", "reachable_fraction"])
+
+    src_nodes = e.loc[e["head_type"] == src_type, "head"].drop_duplicates().tolist()
+    dst_nodes = set(e.loc[e["tail_type"] == dst_type, "tail"].drop_duplicates().tolist())
+
+    if max_sources is not None and len(src_nodes) > max_sources:
+        src_nodes = src_nodes[:max_sources]
+
+    adjacency: dict[str, list[str]] = {}
+    for h, t in e[["head", "tail"]].itertuples(index=False, name=None):
+        adjacency.setdefault(h, []).append(t)
+
+    reach_by_hop = {h: 0 for h in range(1, max_hops + 1)}
+    total_sources = len(src_nodes)
+
+    for s in src_nodes:
+        visited = {s}
+        frontier = {s}
+        first_hit_hop: int | None = None
+
+        for hop in range(1, max_hops + 1):
+            next_frontier: set[str] = set()
+            for cur in frontier:
+                for nxt in adjacency.get(cur, []):
+                    if nxt not in visited:
+                        visited.add(nxt)
+                        next_frontier.add(nxt)
+
+            if next_frontier & dst_nodes and first_hit_hop is None:
+                first_hit_hop = hop
+
+            frontier = next_frontier
+            if not frontier:
+                break
+
+        if first_hit_hop is not None:
+            for hop in range(first_hit_hop, max_hops + 1):
+                reach_by_hop[hop] += 1
+
+    rows = []
+    for hop in range(1, max_hops + 1):
+        reachable = int(reach_by_hop[hop])
+        frac = float(reachable / total_sources) if total_sources > 0 else 0.0
+        rows.append(
+            {
+                "hop": hop,
+                "reachable_sources": reachable,
+                "total_sources": int(total_sources),
+                "reachable_fraction": frac,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def power_law_fit(degree_series: pd.Series, min_degree: int = 1) -> dict[str, Any]:
+    """Fit power-law trend on degree distribution in log-log space.
+
+    Should report:
+    - exponent (alpha)
+    - fit_slope, fit_intercept
+    - r_squared
+    - num_points_used
+
+    Focus:
+    - Describe heavy-tail tendency, not to prove strict power-law validity.
+    """
+    vals = pd.Series(degree_series).dropna().astype(float)
+    vals = vals[vals >= float(min_degree)]
+    if vals.empty:
+        return {
+            "exponent": np.nan,
+            "fit_slope": np.nan,
+            "fit_intercept": np.nan,
+            "r_squared": np.nan,
+            "num_points_used": 0,
+        }
+
+    counts = vals.value_counts().sort_index()
+    x = np.log10(counts.index.to_numpy(dtype=float))
+    y = np.log10(counts.to_numpy(dtype=float))
+
+    if x.size < 2:
+        return {
+            "exponent": np.nan,
+            "fit_slope": np.nan,
+            "fit_intercept": np.nan,
+            "r_squared": np.nan,
+            "num_points_used": int(x.size),
+        }
+
+    slope, intercept = np.polyfit(x, y, 1)
+    y_pred = slope * x + intercept
+    ss_res = float(np.sum((y - y_pred) ** 2))
+    ss_tot = float(np.sum((y - y.mean()) ** 2))
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else np.nan
+
+    return {
+        "exponent": float(-slope),
+        "fit_slope": float(slope),
+        "fit_intercept": float(intercept),
+        "r_squared": float(r2),
+        "num_points_used": int(x.size),
+    }
+
+
+def power_law_summary(degrees_df: DataFrame) -> DataFrame:
+    """Run power-law fit globally and per node type.
+
+    Should include:
+    - scope (global or type)
+    - exponent
+    - r_squared
+    - sample_size
+
+    Focus:
+    - Compact report table for thesis-ready interpretation.
+    """
+    if "total_degree" not in degrees_df.columns:
+        raise ValueError("power_law_summary expects a DataFrame with a 'total_degree' column")
+
+    rows: list[dict[str, Any]] = []
+    global_fit = power_law_fit(degrees_df["total_degree"])
+    rows.append(
+        {
+            "scope": "global",
+            "exponent": global_fit["exponent"],
+            "r_squared": global_fit["r_squared"],
+            "sample_size": int(degrees_df.shape[0]),
+            "num_points_used": global_fit["num_points_used"],
+        }
+    )
+
+    if "node_type" in degrees_df.columns:
+        for ntype, grp in degrees_df.groupby("node_type", dropna=False):
+            fit = power_law_fit(grp["total_degree"])
+            rows.append(
+                {
+                    "scope": str(ntype),
+                    "exponent": fit["exponent"],
+                    "r_squared": fit["r_squared"],
+                    "sample_size": int(grp.shape[0]),
+                    "num_points_used": fit["num_points_used"],
+                }
+            )
+
+    return pd.DataFrame(rows)
+
+
+def feature_readiness(
+    edges_df: DataFrame,
+    features_df: DataFrame,
+    feature_key_col: str = "node_index",
+    feature_type_col: str | None = None,
+) -> dict[str, Any]:
+    """Evaluate how well external feature rows can join to KG entities.
+
+    Should report:
+    - feature_rows
+    - joinable_rows
+    - coverage_ratio
+    - unmatched_feature_keys
+    - per_type_coverage (if type info available)
+
+    Focus:
+    - Data readiness check before model training.
+    """
+    nodes = extract_nodes_df(edges_df)
+    if feature_key_col not in features_df.columns:
+        raise ValueError(f"features_df is missing key column: {feature_key_col}")
+
+    feature_keys = features_df[feature_key_col].dropna().astype(str)
+    node_ids = set(nodes["node_id"].astype(str).tolist())
+
+    joinable_mask = feature_keys.isin(node_ids)
+    joinable_rows = int(joinable_mask.sum())
+    feature_rows = int(feature_keys.shape[0])
+    unmatched = sorted(feature_keys[~joinable_mask].drop_duplicates().tolist())
+
+    out: dict[str, Any] = {
+        "feature_rows": feature_rows,
+        "joinable_rows": joinable_rows,
+        "coverage_ratio": float(joinable_rows / feature_rows) if feature_rows > 0 else 0.0,
+        "unmatched_feature_keys": unmatched,
+    }
+
+    if feature_type_col is not None and feature_type_col in features_df.columns and "node_type" in nodes.columns:
+        ft = features_df[[feature_key_col, feature_type_col]].copy()
+        ft[feature_key_col] = ft[feature_key_col].astype(str)
+
+        per_type = []
+        for t, grp in ft.groupby(feature_type_col, dropna=False):
+            keys_t = grp[feature_key_col]
+            node_ids_t = set(nodes.loc[nodes["node_type"] == str(t), "node_id"].astype(str).tolist())
+            if not node_ids_t:
+                cov = 0.0
+                join_t = 0
+            else:
+                join_t = int(keys_t.isin(node_ids_t).sum())
+                cov = float(join_t / max(len(keys_t), 1))
+            per_type.append(
+                {
+                    "node_type": str(t),
+                    "feature_rows": int(len(keys_t)),
+                    "joinable_rows": join_t,
+                    "coverage_ratio": cov,
+                }
+            )
+        out["per_type_coverage"] = per_type
+
+    return out
+
+# %%

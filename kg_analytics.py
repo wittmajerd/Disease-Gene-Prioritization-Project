@@ -45,7 +45,7 @@ from IPython.display import display
 
 # DF header: relation, display_relation, x_index, x_id, x_type, x_name, x_source, y_index, y_id, y_type, y_name, y_source
 # %%
-df = pd.read_csv("primekg/kg.csv", low_memory=False)
+# df = pd.read_csv("primekg/kg.csv", low_memory=False)
 
 
 # %%
@@ -77,6 +77,13 @@ def extract_nodes_df(df: DataFrame) -> DataFrame:
 
     return all_types.reset_index(drop=True)
 
+
+def extract_all_nodes(df: DataFrame) -> DataFrame:
+    head = df[["x_index", "x_id", "x_type", "x_name", "x_source"]].rename(columns={"x_index": "index", "x_type": "type", "x_id": "id", "x_name": "name", "x_source": "source"})
+    tail = df[["y_index", "y_id", "y_type", "y_name", "y_source"]].rename(columns={"y_index": "index", "y_type": "type", "y_id": "id", "y_name": "name", "y_source": "source"})
+    all_types = pd.concat([head, tail], ignore_index=True)
+
+    return all_types.reset_index(drop=True)
 
 def compute_degrees(df: DataFrame) -> DataFrame:
     """Compute per-node in/out/total degree table.
@@ -126,7 +133,6 @@ def reverse_edge_consistency_check(df: DataFrame) -> DataFrame:
     print(paired["_merge"].unique())
 
 
-# %%
 def calc_global_stats(df: DataFrame) -> dict[str, Any]:
     """Compute high-level KG summary metrics.
 
@@ -172,7 +178,6 @@ def calc_global_stats(df: DataFrame) -> dict[str, Any]:
         "duplicate_edge_rows": int(duplicate_edge_rows),
     }
 
-# %%
 def connected_components_summary(df: DataFrame) -> dict[str, Any]:
     """Analyze weakly connected components.
 
@@ -232,7 +237,6 @@ def connected_components_summary(df: DataFrame) -> dict[str, Any]:
         "isolated_node_count": int(sum(1 for s in comp_sizes if s == 1)),
     }
 
-# %%
 def node_type_stats(edges_df: DataFrame, degrees_df: DataFrame | None = None) -> DataFrame:
     """Compute node-degree statistics grouped by node type.
 
@@ -266,8 +270,7 @@ def node_type_stats(edges_df: DataFrame, degrees_df: DataFrame | None = None) ->
         )
     return pd.DataFrame(rows).sort_values("node_count", ascending=False).reset_index(drop=True)
 
-# %%
-def relation_type_stats(edges_df: DataFrame) -> DataFrame:
+def relation_type_stats(df: DataFrame) -> DataFrame:
     """Compute per-relation structural statistics.
 
     Should include:
@@ -281,25 +284,20 @@ def relation_type_stats(edges_df: DataFrame) -> DataFrame:
     Focus:
     - Relation cardinality behavior and sparsity per relation.
     """
-    e = _canonical_edges(edges_df)
-
-    if "head_type" not in e.columns:
-        e["head_type"] = "unknown"
-    if "tail_type" not in e.columns:
-        e["tail_type"] = "unknown"
+    e = df[["x_index", "y_index", "relation", "x_type", "y_type"]]
 
     rows: list[dict[str, Any]] = []
-    grouped = e.groupby(["relation", "head_type", "tail_type"], dropna=False)
+    grouped = e.groupby(["relation", "x_type", "y_type"], dropna=False)
     for (rel, src_t, dst_t), g in grouped:
         edge_count = int(g.shape[0])
-        unique_heads = int(g["head"].nunique())
-        unique_tails = int(g["tail"].nunique())
+        unique_heads = int(g["x_index"].nunique())
+        unique_tails = int(g["y_index"].nunique())
 
         possible_pairs = max(unique_heads * unique_tails, 1)
         density = edge_count / float(possible_pairs)
 
-        tails_per_head = g.groupby("head")["tail"].nunique()
-        heads_per_tail = g.groupby("tail")["head"].nunique()
+        tails_per_head = g.groupby("x_index")["y_index"].nunique()
+        heads_per_tail = g.groupby("y_index")["x_index"].nunique()
         avg_tph = float(tails_per_head.mean()) if not tails_per_head.empty else 0.0
         avg_hpt = float(heads_per_tail.mean()) if not heads_per_tail.empty else 0.0
 
@@ -325,7 +323,7 @@ def relation_type_stats(edges_df: DataFrame) -> DataFrame:
     return pd.DataFrame(rows).sort_values("edge_count", ascending=False).reset_index(drop=True)
 
 # %%
-def connectivity_matrix(edges_df: DataFrame, normalize: bool = False) -> DataFrame:
+def connectivity_matrix(df: DataFrame, normalize: bool = False) -> DataFrame:
     """Build source-type vs destination-type edge matrix.
 
     - normalize=False: raw counts
@@ -334,13 +332,13 @@ def connectivity_matrix(edges_df: DataFrame, normalize: bool = False) -> DataFra
     Focus:
     - Schema-level connectivity view and confusion-matrix-style table.
     """
-    e = _canonical_edges(edges_df)
-    if "head_type" not in e.columns or "tail_type" not in e.columns:
+    e = df[["x_index", "y_index", "relation", "x_type", "y_type"]]
+    if "x_type" not in e.columns or "y_type" not in e.columns:
         raise ValueError("connectivity_matrix requires x_type/y_type or head_type/tail_type columns")
 
     mat = (
-        e.groupby(["head_type", "tail_type"]).size().rename("edge_count").reset_index().pivot(
-            index="head_type", columns="tail_type", values="edge_count"
+        e.groupby(["x_type", "y_type"]).size().rename("edge_count").reset_index().pivot(
+            index="x_type", columns="y_type", values="edge_count"
         ).fillna(0)
     )
     mat = mat.astype(float if normalize else int)
@@ -349,8 +347,8 @@ def connectivity_matrix(edges_df: DataFrame, normalize: bool = False) -> DataFra
         mat = mat.div(row_sums, axis=0).fillna(0.0)
     return mat
 
-
-def schema_edge_type_counts(edges_df: DataFrame) -> DataFrame:
+# %%
+def schema_edge_type_counts(df: DataFrame) -> DataFrame:
     """Summarize schema edges at (head_type, tail_type) granularity.
 
     Should include:
@@ -362,12 +360,12 @@ def schema_edge_type_counts(edges_df: DataFrame) -> DataFrame:
     Focus:
     - Graph schema map for plotting and reporting.
     """
-    e = _canonical_edges(edges_df)
-    if "head_type" not in e.columns or "tail_type" not in e.columns:
+    e = df[["x_index", "y_index", "relation", "x_type", "y_type"]]
+    if "x_type" not in e.columns or "y_type" not in e.columns:
         raise ValueError("schema_edge_type_counts requires x_type/y_type or head_type/tail_type columns")
 
     out = (
-        e.groupby(["head_type", "tail_type"]).agg(
+        e.groupby(["x_type", "y_type"]).agg(
             edge_count=("relation", "size"),
             num_relations=("relation", "nunique"),
             relations=("relation", lambda x: ", ".join(sorted(set(x)))),
@@ -378,7 +376,7 @@ def schema_edge_type_counts(edges_df: DataFrame) -> DataFrame:
 
 # %%
 def target_relation_analysis(
-    edges_df: DataFrame,
+    df: DataFrame,
     src_type: str = "disease",
     dst_type: str = "gene/protein",
     relation: str | None = None,
@@ -395,39 +393,40 @@ def target_relation_analysis(
     Focus:
     - Prioritization-target diagnostics (coverage, sparsity, hubs).
     """
-    e = _canonical_edges(edges_df)
-    if "head_type" not in e.columns or "tail_type" not in e.columns:
-        raise ValueError("target_relation_analysis requires x_type/y_type or head_type/tail_type columns")
+    e = df[["x_index", "y_index", "relation", "x_type", "y_type"]]
 
-    sub = e[(e["head_type"] == src_type) & (e["tail_type"] == dst_type)].copy()
+    sub = e[(e["x_type"] == src_type) & (e["y_type"] == dst_type)].copy()
+    display(sub.head())
     if relation is not None:
         sub = sub[sub["relation"] == relation].copy()
 
-    src_deg = sub.groupby("head").size().rename("degree")
-    dst_deg = sub.groupby("tail").size().rename("degree")
+    src_deg = sub.groupby("x_index").size().rename("degree")
+    dst_deg = sub.groupby("y_index").size().rename("degree")
 
     return {
         "src_type": src_type,
         "dst_type": dst_type,
         "relation": relation,
         "total_edges": int(sub.shape[0]),
-        "unique_src": int(sub["head"].nunique()),
-        "unique_dst": int(sub["tail"].nunique()),
-        "src_degree_stats": _degree_stats_from_counts(src_deg),
-        "dst_degree_stats": _degree_stats_from_counts(dst_deg),
+        "unique_src": int(sub["x_index"].nunique()),
+        "unique_dst": int(sub["y_index"].nunique()),
+        # "src_degree_stats": _degree_stats_from_counts(src_deg),
+        # "dst_degree_stats": _degree_stats_from_counts(dst_deg),
         "cold_start_src_lte2": int((src_deg <= 2).sum()) if not src_deg.empty else 0,
         "cold_start_src_zero": int(
-            len(set(e.loc[e["head_type"] == src_type, "head"].unique()) - set(src_deg.index.tolist()))
+            len(set(e.loc[e["x_type"] == src_type, "x_index"].unique()) - set(src_deg.index.tolist()))
         ),
         "top_src_hubs": [(k, int(v)) for k, v in src_deg.sort_values(ascending=False).head(top_k).items()],
         "top_dst_hubs": [(k, int(v)) for k, v in dst_deg.sort_values(ascending=False).head(top_k).items()],
     }
 
+# ez most még elég szar
+
 # %%
 def metapath_schema_analysis(
-    edges_df: DataFrame,
-    src_type: str,
-    dst_type: str,
+    df: DataFrame,
+    src_type: str = "disease",
+    dst_type: str = "gene/protein",
     max_hops: int = 3,
 ) -> DataFrame:
     """Enumerate valid schema metapaths between two node types.
@@ -440,13 +439,11 @@ def metapath_schema_analysis(
     Focus:
     - Discover message-passing routes available to multi-hop models.
     """
-    e = _canonical_edges(edges_df)
-    if "head_type" not in e.columns or "tail_type" not in e.columns:
-        raise ValueError("metapath_schema_analysis requires x_type/y_type or head_type/tail_type columns")
+    e = df[["x_index", "y_index", "relation", "x_type", "y_type"]]
     if max_hops < 1:
         return pd.DataFrame(columns=["metapath_types", "relation_sequence", "hop_length"])
 
-    schema_edges = e[["head_type", "relation", "tail_type"]].drop_duplicates()
+    schema_edges = e[["x_type", "relation", "y_type"]].drop_duplicates()
     adjacency: dict[str, list[tuple[str, str]]] = {}
     for h_t, rel, t_t in schema_edges.itertuples(index=False, name=None):
         adjacency.setdefault(h_t, []).append((str(rel), str(t_t)))
@@ -477,10 +474,10 @@ def metapath_schema_analysis(
 
 
 def metapath_reachability(
-    edges_df: DataFrame,
+    df: DataFrame,
     src_type: str = "disease",
     dst_type: str = "gene/protein",
-    max_hops: int = 3,
+    max_hops: int = 2,
     max_sources: int | None = 1000,
 ) -> DataFrame:
     """Estimate source-node reachability to destination type by hop count.
@@ -494,20 +491,20 @@ def metapath_reachability(
     Focus:
     - Quantify how much extra neighborhood signal appears at 2/3 hops.
     """
-    e = _canonical_edges(edges_df)
-    if "head_type" not in e.columns or "tail_type" not in e.columns:
-        raise ValueError("metapath_reachability requires x_type/y_type or head_type/tail_type columns")
+    e = df[["x_index", "y_index", "relation", "x_type", "y_type"]]
+    if "x_type" not in e.columns or "y_type" not in e.columns:
+        raise ValueError("metapath_reachability requires x_type/y_type columns")
     if max_hops < 1:
         return pd.DataFrame(columns=["hop", "reachable_sources", "total_sources", "reachable_fraction"])
 
-    src_nodes = e.loc[e["head_type"] == src_type, "head"].drop_duplicates().tolist()
-    dst_nodes = set(e.loc[e["tail_type"] == dst_type, "tail"].drop_duplicates().tolist())
+    src_nodes = e.loc[e["x_type"] == src_type, "x_index"].drop_duplicates().tolist()
+    dst_nodes = set(e.loc[e["y_type"] == dst_type, "y_index"].drop_duplicates().tolist())
 
     if max_sources is not None and len(src_nodes) > max_sources:
         src_nodes = src_nodes[:max_sources]
 
     adjacency: dict[str, list[str]] = {}
-    for h, t in e[["head", "tail"]].itertuples(index=False, name=None):
+    for h, t in e[["x_index", "y_index"]].itertuples(index=False, name=None):
         adjacency.setdefault(h, []).append(t)
 
     reach_by_hop = {h: 0 for h in range(1, max_hops + 1)}
@@ -710,3 +707,64 @@ def feature_readiness(
     return out
 
 # %%
+
+# all_nodes = extract_all_nodes(df)
+# # %%
+# # len, duplicates, unique idx, name stb nulls?
+# # "index" = "id", "name", "source"
+# deduplicated = all_nodes.drop_duplicates(subset=["index"])
+# deduplicated2 = all_nodes.drop_duplicates(subset=["id", "name", "source"])
+
+# cols = ["index", "type", "id", "name", "source"]
+# d1 = deduplicated[cols].sort_values(cols).reset_index(drop=True)
+# d2 = deduplicated2[cols].sort_values(cols).reset_index(drop=True)
+
+# only_in_d1 = d1.merge(d2, on=cols, how="left", indicator=True).query('_merge == "left_only"').drop(columns=["_merge"])
+# only_in_d2 = d2.merge(d1, on=cols, how="left", indicator=True).query('_merge == "left_only"').drop(columns=["_merge"])
+# display(only_in_d1)
+# display(only_in_d2)
+
+
+# deduplicated.isna().sum() # 0
+
+
+# %%
+def inspect_key_consistency(df: DataFrame) -> dict[str, DataFrame]:
+    all_nodes = extract_all_nodes(df)
+    deduplicated = all_nodes.drop_duplicates(subset=["index"])
+    deduplicated2 = all_nodes.drop_duplicates(subset=["id", "name", "source"])
+
+    summary_rows = []
+    for col in all_nodes.columns:
+        s = all_nodes[col]
+        summary_rows.append(
+            {
+                "column": col,
+                "rows": int(len(s)),
+                "nulls": int(s.isna().sum()),
+                "nunique": int(s.nunique()),
+                "duplicates": int(len(s) - s.nunique()),
+            }
+        )
+    summary = pd.DataFrame(summary_rows)
+    display(summary)
+
+    # If y_index is a key, each y_index should map to exactly one y_id and one y_name.
+    idx_to_id_n = all_nodes.groupby("index", dropna=False)["id"].nunique(dropna=False).rename("id_per_index")
+    idx_to_name_n = all_nodes.groupby("index", dropna=False)["name"].nunique(dropna=False).rename("name_per_index")
+    idx_conflicts = pd.concat([idx_to_id_n, idx_to_name_n], axis=1).reset_index()
+    idx_conflicts = idx_conflicts[(idx_conflicts["id_per_index"] > 1) | (idx_conflicts["name_per_index"] > 1)]
+
+    # Reverse check: does one id/name appear with multiple indexes?
+    id_to_idx_n = all_nodes.groupby("id", dropna=False)["index"].nunique(dropna=False).rename("index_per_id")
+    id_conflicts = id_to_idx_n[id_to_idx_n > 1].reset_index()
+    display(id_conflicts)
+
+    name_to_idx_n = all_nodes.groupby("name", dropna=False)["index"].nunique(dropna=False).rename("index_per_name")
+    name_conflicts = name_to_idx_n[name_to_idx_n > 1].reset_index()
+    display(name_conflicts)
+
+
+# x and y are interchangeble bc all rel is bidirectional
+
+# inspect_key_consistency(df)

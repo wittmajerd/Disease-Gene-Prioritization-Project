@@ -1,18 +1,9 @@
-source:
-  primekg_dir: primekg
-  kg_file: kg.csv
-  nodes_file: nodes.csv
-  disease_features_file: disease_features.csv
-  drug_features_file: drug_features.csv
+path: "primekg/kg.csv"
 
-filters:
-  relation_whitelist: []
-  node_type_filter_enabled: true
-  allowed_node_types:
-    - disease
-    - gene/protein
-  drop_duplicates: true
-  remove_self_loops: false
+key: "name" #"index"
+
+drop_duplicates: true
+remove_self_loops: true
 
 splits:
   train: 0.9
@@ -21,16 +12,66 @@ splits:
   random_seed: 42
 
 # not working yet
-features:
-  enabled: true
-  include_node_metadata: true
-  include_disease_descriptions: true
-  include_drug_descriptions: true
+# features:
+#   enabled: true
 
-export:
-  enabled: false
-  output_dir: dataset_snapshots
+# export:
+#   enabled: false
+#   output_dir: dataset_snapshots
 
-runtime:
-  max_rows: null
-  verbose: true
+
+filters:
+  relation_types:
+    # Disease-centric
+    - disease_disease
+    - disease_protein
+    - disease_phenotype_positive
+    - disease_phenotype_negative
+
+    # Drug-centric
+    - drug_drug
+    - drug_protein
+    - drug_effect
+    - indication        # disease 
+    - contraindication  # disease
+    - off-label use     # disease
+
+    # Gene/Protein-centric interactions & biology
+    - protein_protein
+    - bioprocess_protein
+    - bioprocess_bioprocess
+    - cellcomp_protein
+    - cellcomp_cellcomp
+    - molfunc_protein
+    - molfunc_molfunc
+    - pathway_protein
+    - pathway_pathway
+
+    # Anatomy
+    - anatomy_anatomy
+    - anatomy_protein_present
+    - anatomy_protein_absent
+
+    # Phenotype
+    - phenotype_phenotype
+    - phenotype_protein
+
+    # Exposure
+    - exposure_exposure
+    - exposure_disease
+    - exposure_protein
+    - exposure_bioprocess
+    - exposure_molfunc
+    - exposure_cellcomp
+
+  node_types:
+    - anatomy
+    - biological_process
+    - cellular_component
+    - disease
+    - drug
+    - effect/phenotype
+    - exposure
+    - gene/protein
+    - molecular_function
+    - pathway

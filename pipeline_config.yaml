@@ -26,7 +26,7 @@ clear_optimizer:
 # 5.1 Learning Rate Scheduler
 # lr_scheduler: ExponentialLR
 # lr_scheduler_kwargs:
-#   gamma: 
+#   gamma: 0.9
 # 6. Training Loop
 training_loop: 
 training_loop_kwargs:
@@ -57,12 +57,12 @@ evaluation_kwargs:
 #   project:
 #   tags: 
 # Misc
-metadata: 
+# metadata: 
 # device: "cuda"
 random_seed: 42
-use_testing_data: True
-evaluation_fallback: True
-filter_validation_when_testing:  True
+# use_testing_data: True
+# evaluation_fallback: True
+# filter_validation_when_testing:  True
 # use_tqdm: True
 
 
@@ -80,7 +80,7 @@ dataset_config:
   inverse_relations: True
 
   # ezek még kissebbek is lehetnek a val mindenképp ha early stopping van
-  val_count: 10000
+  val_count: 1000
   test_count: 10000
   random_seed: 42
 

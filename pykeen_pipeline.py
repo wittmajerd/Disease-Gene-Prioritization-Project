@@ -1,4 +1,3 @@
-# %%
 from __future__ import annotations
 
 import argparse
@@ -59,11 +58,6 @@ def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[EagerData
     return dataset.get_dataset(), dataset_label
 
 
-def get_model(model_cfg: dict[str, Any]) -> tuple[Any, str]:
-    # Later if we use own models
-    pass
-
-
 def run_pipeline(config: dict[str, Any]):
     data_path = Path(config.get("data_path", "dataset_saves"))
     dataset_cfg = config.get("dataset_config", {})
@@ -96,8 +90,8 @@ def run_pipeline(config: dict[str, Any]):
         regularizer =  config.get("regularizer", None),
         regularizer_kwargs = config.get("regularizer_kwargs", None),
         # 5. Optimizer
-        optimizer = config.get("optimizer", "Adam"),
-        optimizer_kwargs = config.get("optimizer_kwargs", dict(lr=0.001)),
+        optimizer = config.get("optimizer", None),
+        optimizer_kwargs = config.get("optimizer_kwargs", None),
         clear_optimizer = config.get("clear_optimizer", True),
         # 5.1 Learning Rate Scheduler
         lr_scheduler = config.get("lr_scheduler", None),
@@ -119,17 +113,14 @@ def run_pipeline(config: dict[str, Any]):
         # 9. Tracking
         result_tracker = config.get("result_tracker", None),
         result_tracker_kwargs = config.get("result_tracker_kwargs", None),
-        # Misc
-        # metadata = config.get("metadata", None),
-        device = config.get("device", None),
+        # Misc - a többi jó alapbeállításon
         random_seed = config.get("random_seed", 42),
-        use_testing_data = config.get("use_testing_data", True),
-        evaluation_fallback = config.get("evaluation_fallback", True),
-        filter_validation_when_testing = config.get("filter_validation_when_testing", True),
-        use_tqdm = config.get("use_tqdm", None),
     )
     print("Pipeline finished. Saving results...")
     result.save_to_directory(output_dir)
+    with (output_dir / "result.pkl").open("wb") as f:
+        pickle.dump(result, f)
+
     return output_dir
 
 
@@ -143,7 +134,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-# %%
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
@@ -153,11 +143,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-# %%
-
-# cfgpath = Path("pipeline_config.yaml")
-# cfg = load_config(cfgpath)
-# run_pipeline(cfg)
-
-# %%

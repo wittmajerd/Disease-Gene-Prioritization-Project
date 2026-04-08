@@ -1,19 +1,8 @@
-numpy>=1.24
-pandas>=2.0
-networkx>=3.0
-matplotlib>=3.6
-seaborn>=0.12
-requests>=2.28
-mygene>=3.2
-scikit-learn>=1.2
-jupyterlab>=4.0
-tqdm>=4.65
-pyyaml>=6.0
-
-# pecanpy>=2.0.1
-# pytorch_lightning>=1.5.1
-# scikit_learn>=0.24.1
-# torch>=1.10.1+cu113
-# torch_geometric>=2.0.5
-# wandb>=0.12.9
-
+# python 3.11
+pykeen
+pyyaml
+pandas
+matplotlib
+networkx
+seaborn
+# pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu126

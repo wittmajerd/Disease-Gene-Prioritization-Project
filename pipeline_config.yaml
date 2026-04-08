@@ -1,0 +1,144 @@
+data_path: dataset_saves
+
+save:
+  directory: results
+  # run_name:
+
+# ezek lehet jók később ha d-p-re fókuszálunk
+# evaluation_entity_whitelist:
+# evaluation_relation_whitelist:
+
+# 2. Model
+model: DistMult
+model_kwargs:
+  embedding_dim: 200
+# 3. Loss
+loss: 
+loss_kwargs:
+# 4. Regularizer
+regularizer: 
+regularizer_kwargs:
+# 5. Optimizer
+optimizer: Adam
+optimizer_kwargs:
+  lr: 0.001
+clear_optimizer: 
+# 5.1 Learning Rate Scheduler
+# lr_scheduler: ExponentialLR
+# lr_scheduler_kwargs:
+#   gamma: 0.9
+# 6. Training Loop
+training_loop: 
+training_loop_kwargs:
+negative_sampler: 
+negative_sampler_kwargs:
+  num_negs_per_pos: 1
+# 7. Training
+epochs: 30
+training_kwargs:
+  batch_size: 256
+  checkpoint_name: checkpoint.pth
+  checkpoint_frequency: 5
+  checkpoint_on_failure: True
+# stopper: "early"
+# stopper_kwargs:
+#   frequency: 1
+#   patience: 10
+#   relative_delta: 0.002
+
+# 8. Evaluation
+evaluator: 
+evaluator_kwargs:
+evaluation_kwargs:
+  batch_size: 64
+# 9. Tracking
+# result_tracker: "wandb"
+# result_tracker_kwargs:
+#   project:
+#   tags: 
+# Misc
+# metadata: 
+# device: "cuda"
+random_seed: 42
+# use_testing_data: True
+# evaluation_fallback: True
+# filter_validation_when_testing:  True
+# use_tqdm: True
+
+
+# 1. Dataset
+# dataset_config_path: or
+dataset_config:
+  kg_path: "primekg/kg.csv"
+  # label: 
+
+  key: "name" # "index" or "name"
+
+  drop_duplicates: True
+  remove_self_loops: True
+
+  inverse_relations: True
+
+  # ezek még kissebbek is lehetnek a val mindenképp ha early stopping van
+  val_count: 1000
+  test_count: 10000
+  random_seed: 42
+
+  # not working yet
+  features: 
+  #   enabled: True
+
+  relation_types:
+    # Disease-centric
+    - disease_disease
+    - disease_protein
+    - disease_phenotype_positive
+    - disease_phenotype_negative
+
+    # Drug-centric
+    - drug_drug
+    - drug_protein
+    - drug_effect
+    - indication        # disease 
+    - contraindication  # disease
+    - off-label use     # disease
+
+    # Gene/Protein-centric interactions & biology
+    - protein_protein
+    - bioprocess_protein
+    - bioprocess_bioprocess
+    - cellcomp_protein
+    - cellcomp_cellcomp
+    - molfunc_protein
+    - molfunc_molfunc
+    - pathway_protein
+    - pathway_pathway
+
+    # Anatomy
+    - anatomy_anatomy
+    - anatomy_protein_present
+    - anatomy_protein_absent
+
+    # Phenotype
+    - phenotype_phenotype
+    - phenotype_protein
+
+    # Exposure
+    - exposure_exposure
+    - exposure_disease
+    - exposure_protein
+    - exposure_bioprocess
+    - exposure_molfunc
+    - exposure_cellcomp
+
+  node_types:
+    - disease
+    - gene/protein
+    # - drug
+    # - anatomy
+    # - biological_process
+    # - cellular_component
+    # - effect/phenotype
+    # - exposure
+    # - molecular_function
+    # - pathway

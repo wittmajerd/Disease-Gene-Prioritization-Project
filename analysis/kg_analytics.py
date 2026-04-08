@@ -731,8 +731,8 @@ def feature_readiness(
 # %%
 def inspect_key_consistency(df: DataFrame) -> dict[str, DataFrame]:
     all_nodes = extract_all_nodes(df)
-    deduplicated = all_nodes.drop_duplicates(subset=["index"])
-    deduplicated2 = all_nodes.drop_duplicates(subset=["id", "name", "source"])
+    # deduplicated = all_nodes.drop_duplicates(subset=["index"])
+    # deduplicated2 = all_nodes.drop_duplicates(subset=["id", "name", "source"])
 
     summary_rows = []
     for col in all_nodes.columns:

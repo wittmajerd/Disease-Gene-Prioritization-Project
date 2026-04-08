@@ -117,6 +117,8 @@ def run_pipeline(config: dict[str, Any]):
         random_seed = config.get("random_seed", 42),
     )
     print("Pipeline finished. Saving results...")
+    print(f"Hits@10: {result.get_metric('hits@10'):.4f}")
+    print(f"Mean Reciprocal Rank: {result.get_metric('mean_reciprocal_rank'):.4f}")
     result.save_to_directory(output_dir)
     with (output_dir / "result.pkl").open("wb") as f:
         pickle.dump(result, f)

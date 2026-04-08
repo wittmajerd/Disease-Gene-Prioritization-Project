@@ -1,18 +1,4 @@
-# Choose one dataset mode:
-# 1) builtin dataset
-dataset:
-  kind: builtin
-  name: primekg
-
-# 2) custom triples files (uncomment and adjust paths)
-# dataset:
-#   kind: custom_path
-#   name: primekg_custom
-#   kwargs:
-#     training_path: dataverse_files_primekg/train.tsv
-#     testing_path: dataverse_files_primekg/test.tsv
-#     validation_path: dataverse_files_primekg/valid.tsv
-#     create_inverse_triples: true
+data_path: dataset_saves
 
 model:
   name: TransE
@@ -30,7 +16,129 @@ training_kwargs:
   checkpoint_directory: checkpoints
   checkpoint_on_failure: true
 
-random_seed: 42
 
 save:
   directory: results
+
+
+
+
+# ezek lehet jók később ha d-p-re fókuszálunk
+evaluation_entity_whitelist:
+evaluation_relation_whitelist:
+# 2. Model
+model:
+model_kwargs:
+# 3. Loss
+loss: 
+loss_kwargs: 
+# 4. Regularizer
+regularizer: 
+regularizer_kwargs: 
+# 5. Optimizer
+optimizer: 
+optimizer_kwargs: 
+clear_optimizer: 
+# 5.1 Learning Rate Scheduler
+lr_scheduler: 
+lr_scheduler_kwargs: 
+# 6. Training Loop
+training_loop: 
+training_loop_kwargs: 
+negative_sampler: 
+negative_sampler_kwargs: 
+# 7. Training
+epochs: 
+training_kwargs: 
+stopper: 
+stopper_kwargs: 
+# 8. Evaluation
+evaluator: 
+evaluator_kwargs: 
+evaluation_kwargs: 
+# 9. Tracking
+result_tracker: 
+result_tracker_kwargs: 
+# Misc
+metadata: 
+device: "cuda"
+random_seed: 42
+use_testing_data: True
+evaluation_fallback: False
+filter_validation_when_testing:  True
+use_tqdm: True
+
+# 1. Dataset
+# dataset_config_path: or
+dataset_config:
+  kg_path: "primekg/kg.csv"
+
+  key: "name" # "index" or "name"
+
+  drop_duplicates: true
+  remove_self_loops: true
+
+  inverse_relations: True
+
+  val_count: 10000
+  test_count: 10000
+  random_seed: 42
+
+  # not working yet
+  features:
+  #   enabled: true
+
+  relation_types:
+    # Disease-centric
+    - disease_disease
+    - disease_protein
+    - disease_phenotype_positive
+    - disease_phenotype_negative
+
+    # Drug-centric
+    - drug_drug
+    - drug_protein
+    - drug_effect
+    - indication        # disease 
+    - contraindication  # disease
+    - off-label use     # disease
+
+    # Gene/Protein-centric interactions & biology
+    - protein_protein
+    - bioprocess_protein
+    - bioprocess_bioprocess
+    - cellcomp_protein
+    - cellcomp_cellcomp
+    - molfunc_protein
+    - molfunc_molfunc
+    - pathway_protein
+    - pathway_pathway
+
+    # Anatomy
+    - anatomy_anatomy
+    - anatomy_protein_present
+    - anatomy_protein_absent
+
+    # Phenotype
+    - phenotype_phenotype
+    - phenotype_protein
+
+    # Exposure
+    - exposure_exposure
+    - exposure_disease
+    - exposure_protein
+    - exposure_bioprocess
+    - exposure_molfunc
+    - exposure_cellcomp
+
+  node_types:
+    - anatomy
+    - biological_process
+    - cellular_component
+    - disease
+    - drug
+    - effect/phenotype
+    - exposure
+    - gene/protein
+    - molecular_function
+    - pathway

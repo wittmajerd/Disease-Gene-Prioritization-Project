@@ -1,24 +1,19 @@
 kg_path: "primekg/kg.csv"
 
-key: "name" #"index"
+key: "name" # "index" or "name"
 
 drop_duplicates: true
 remove_self_loops: true
 
-splits:
-  - train: 0.9
-  - validation: 0.05
-  - test: 0.05
+inverse_relations: True
+
+val_count: 10000
+test_count: 10000
 random_seed: 42
 
 # not working yet
-# features:
+features:
 #   enabled: true
-
-# export:
-#   enabled: false
-#   output_dir: dataset_snapshots
-
 
 relation_types:
   # Disease-centric

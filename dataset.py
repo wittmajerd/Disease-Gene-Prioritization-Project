@@ -1,3 +1,4 @@
+# %%
 from __future__ import annotations
 
 import hashlib
@@ -8,29 +9,37 @@ import pandas as pd
 from typing import Any
 
 from pykeen.triples import TriplesFactory
+from pykeen.datasets.analysis import (
+        get_entity_count_df,
+        get_relation_count_df,
+    )
+from pykeen.datasets import Dataset, EagerDataset
 
 
 class PrimeKGDataset:
     def __init__(self, config):
-        self.kg_path = config.kg_path
+        self.kg_path = config.get("kg_path", "data/kg.csv")
 
-        if config.key == "index":
+        if config.get("key") == "index":
             self.head = "x_index"
             self.tail = "y_index"
-        if config.key == "name":
+        if config.get("key") == "name":
             self.head = "x_name"
             self.tail = "y_name"
 
         self.relation = "relation"
 
-        self.relation_types: list[str] = config.relation_types
-        self.node_types: list[str] = config.node_types
+        self.relation_types: list[str] | None = config.get("relation_types", None)
+        self.node_types: list[str] | None = config.get("node_types", None)
 
         self.drop_duplicates: bool = True
         self.remove_self_loops: bool = True
 
-        self.splits: list[float] = config.splits
-        self.random_seed: int = config.random_seed
+        self.inverse_relations: bool = config.get("inverse_relations", True) # jelenleg alapból így van a primekg de lehet később kiszűröm
+
+        self.val_count: int = config.get("val_count", 1000)
+        self.test_count: int = config.get("test_count", 1000)
+        self.random_seed: int = config.get("random_seed", 42)
 
         self.save: bool = False
         self.output_dir: str = "dataset_snapshots"
@@ -38,9 +47,8 @@ class PrimeKGDataset:
         # features later
 
 
-    def build(self):
+    def build_splits(self):
         triples_df = pd.read_csv(self.kg_path, low_memory=False)
-        triples_df = self._normalize_triples_df(triples_df)
 
         before_count = len(triples_df)
         triples_df = self._apply_filters(triples_df)
@@ -57,7 +65,12 @@ class PrimeKGDataset:
         labeled_triples = triples_df[[self.head, self.relation, self.tail]].to_numpy(dtype=str)
         self.all_triples = TriplesFactory.from_labeled_triples(triples=labeled_triples)
     
-        self.train_tf, self.validation_tf, self.testing_tf = self.all_triples.split(
+        train_ratio = (after_count - self.val_count - self.test_count) / after_count
+        valid_ratio = self.val_count / after_count
+        test_ratio = self.test_count / after_count
+        self.splits = [train_ratio, valid_ratio, test_ratio]
+
+        self.training, self.validation, self.testing = self.all_triples.split(
             ratios=self.splits,
             random_state=self.random_seed,
         )
@@ -71,16 +84,15 @@ class PrimeKGDataset:
 
         self.stats = stats
 
-        if self.save:
-            self._export_snapshot()
-
-        return self.train_tf, self.validation_tf, self.testing_tf
-
+    def get_dataset(self):
+        return EagerDataset(training=self.training, validation=self.validation, testing=self.testing)
 
     def _apply_filters(self, triples_df: pd.DataFrame) -> pd.DataFrame:
-        triples_df = triples_df[triples_df["x_type"].isin(self.node_types) & triples_df["y_type"].isin(self.node_types)]
+        if self.node_types:
+            triples_df = triples_df[triples_df["x_type"].isin(self.node_types) & triples_df["y_type"].isin(self.node_types)]
 
-        triples_df = triples_df[triples_df[self.relation].isin(self.relation_types)]
+        if self.relation_types:
+            triples_df = triples_df[triples_df[self.relation].isin(self.relation_types)]
 
         if self.remove_self_loops:
             triples_df = triples_df[triples_df[self.head] != triples_df[self.tail]]
@@ -101,6 +113,18 @@ class PrimeKGDataset:
         nodes = triples_df[self.head].unique()
 
         # beépített pykeen analysis fgv-ek pl get_relation_counts() stb - checkolhatjuk hogy jó e a split, filter stb
+        # train_ds = Dataset().from_tf(self.training)
+        # val_ds = Dataset().from_tf(self.validation)
+        # test_ds = Dataset().from_tf(self.testing)
+
+        # # get_entity_count_df(train_ds)
+        # train_rel = get_relation_count_df(train_ds)
+        # val_rel = get_relation_count_df(val_ds)
+        # test_rel = get_relation_count_df(test_ds)
+
+        # joined = val_rel.merge(test_rel, on=["relation_id", "relation_label"], how="outer", suffixes=("_val", "_test"))
+        # joined = train_rel.merge(joined, on=["relation_id", "relation_label"], how="outer", suffixes=("_train", ""))
+        # joined = joined.fillna(0)
 
         # na ezen nagyon sokat kell javítani
         return {
@@ -117,40 +141,37 @@ class PrimeKGDataset:
             },
         }
 
+# %%
+def test():
+    config_path = Path("dataset_config.yaml")
 
+    raw_text = config_path.read_text(encoding="utf-8")
+    config = yaml.safe_load(raw_text)
 
-#     def _export_snapshot(self, artifacts: DatasetArtifacts) -> Path:
-#         config_json = json.dumps(asdict(self.config), sort_keys=True)
-#         source_file = Path(self.config.source.primekg_dir) / self.config.source.kg_file
-#         payload = (
-#             f"{config_json}|{source_file.resolve()}|"
-#             f"{source_file.stat().st_mtime_ns}|{source_file.stat().st_size}"
-#         )
-#         config_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+    dataset = PrimeKGDataset(config)
 
-#         output_root = Path(self.config.export.output_dir)
-#         snapshot_dir = output_root / f"primekg_{config_hash}"
-#         snapshot_dir.mkdir(parents=True, exist_ok=True)
+    train_tf, valid_tf, test_tf = dataset.build_splits()
 
-#         artifacts.training.to_path_binary(snapshot_dir / "train")
-#         artifacts.validation.to_path_binary(snapshot_dir / "validation")
-#         artifacts.testing.to_path_binary(snapshot_dir / "test")
-#         artifacts.all_triples.to_path_binary(snapshot_dir / "all")
+# %%
 
-#         (snapshot_dir / "feature_registry.json").write_text(
-#             json.dumps(asdict(artifacts.feature_registry), ensure_ascii=True, indent=2),
-#             encoding="utf-8",
-#         )
-#         (snapshot_dir / "stats.json").write_text(
-#             json.dumps(artifacts.stats, ensure_ascii=True, indent=2),
-#             encoding="utf-8",
-#         )
-#         (snapshot_dir / "dataset_config.json").write_text(
-#             json.dumps(asdict(self.config), ensure_ascii=True, indent=2),
-#             encoding="utf-8",
-#         )
+    # dataset_pykeen = EagerDataset(training=train_tf, validation=valid_tf, testing=test_tf)
 
-#         return snapshot_dir
+    train_ds = Dataset().from_tf(train_tf)
+    val_ds = Dataset().from_tf(valid_tf)
+    test_ds = Dataset().from_tf(test_tf)
+
+    # get_entity_count_df(train)
+    train_rel = get_relation_count_df(train_ds)
+    val_rel = get_relation_count_df(val_ds)
+    test_rel = get_relation_count_df(test_ds)
+
+    joined = val_rel.merge(test_rel, on=["relation_id", "relation_label"], how="outer", suffixes=("_val", "_test"))
+    joined = train_rel.merge(joined, on=["relation_id", "relation_label"], how="outer", suffixes=("_train", ""))
+    joined = joined.fillna(0)
+    joined
+# ok stratified a split de vannak nan-ok ahol alapból nagyon kevés rel van
+
+# %%
 
 #     def _print_summary(self, artifacts: DatasetArtifacts) -> None:
 #         stats = artifacts.stats
@@ -170,38 +191,3 @@ class PrimeKGDataset:
 #         )
 #         if artifacts.snapshot_dir is not None:
 #             print(f"- snapshot: {artifacts.snapshot_dir}")
-
-
-# def load_snapshot(snapshot_dir: Path) -> DatasetArtifacts:
-#     """Load a previously exported dataset snapshot."""
-
-#     snapshot_dir = Path(snapshot_dir)
-#     training = TriplesFactory.from_path_binary(snapshot_dir / "train")
-#     validation = TriplesFactory.from_path_binary(snapshot_dir / "validation")
-#     testing = TriplesFactory.from_path_binary(snapshot_dir / "test")
-#     all_triples = TriplesFactory.from_path_binary(snapshot_dir / "all")
-
-#     feature_registry = FeatureRegistry(entity_metadata={}, text_features={}, stats={"enabled": False})
-#     feature_path = snapshot_dir / "feature_registry.json"
-#     if feature_path.exists():
-#         feature_raw = json.loads(feature_path.read_text(encoding="utf-8"))
-#         feature_registry = FeatureRegistry(
-#             entity_metadata=feature_raw.get("entity_metadata", {}),
-#             text_features=feature_raw.get("text_features", {}),
-#             stats=feature_raw.get("stats", {}),
-#         )
-
-#     stats: dict[str, Any] = {}
-#     stats_path = snapshot_dir / "stats.json"
-#     if stats_path.exists():
-#         stats = json.loads(stats_path.read_text(encoding="utf-8"))
-
-#     return DatasetArtifacts(
-#         training=training,
-#         validation=validation,
-#         testing=testing,
-#         all_triples=all_triples,
-#         feature_registry=feature_registry,
-#         stats=stats,
-#         snapshot_dir=snapshot_dir,
-#     )

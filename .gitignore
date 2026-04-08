@@ -6,3 +6,9 @@
 *.pth
 *.pkl
 /saves
+
+/data
+/primekg
+/dataset_saves
+/results
+/model_saves

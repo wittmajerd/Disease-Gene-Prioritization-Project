@@ -40,7 +40,7 @@ def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[EagerData
     dataset_label = dataset_cfg.get("label", f"dataset_{dataset_hash}")
 
     if not data_path.exists():
-        raise FileNotFoundError(f"Dataset file not found: {data_path}")
+        data_path.mkdir(parents=True, exist_ok=True)
     
     dataset_path = data_path / f"{dataset_label}.pkl"
     if dataset_path.exists():
@@ -48,12 +48,11 @@ def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[EagerData
         with dataset_path.open("rb") as f:
             dataset = pickle.load(f)
     else:
-        print(f"Building dataset from {data_path}")
+        print(f"Building dataset from config and saving to {dataset_path}")
         dataset = PrimeKGDataset(dataset_cfg)
         dataset.build_splits()
         with dataset_path.open("wb") as f:
             pickle.dump(dataset, f)
-
 
     return dataset.get_dataset(), dataset_label
 
@@ -63,9 +62,9 @@ def get_model(model_cfg: dict[str, Any]) -> tuple[Any, str]:
 
 
 def run_pipeline(config: dict[str, Any]):
+    data_path = Path(config.get("data_path", "dataset_saves"))
     dataset_cfg = config.get("dataset_config", {})
     model_cfg = config.get("model", "TransE")
-    data_path = Path(config.get("data_path", "dataset_saves"))
 
     dataset, dataset_label = get_dataset(data_path, dataset_cfg)
     model, model_label = get_model(model_cfg)
@@ -115,7 +114,7 @@ def run_pipeline(config: dict[str, Any]):
 
     save_cfg = config.get("save", {})
     base_dir = Path(save_cfg.get("directory", "results"))
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     run_name = save_cfg.get("run_name", f"{dataset_label}_{model_label}_{timestamp}")
 
     output_dir = base_dir / run_name
@@ -147,5 +146,8 @@ if __name__ == "__main__":
 
 # %%
 
-cfgpath = Path("pipeline_config.yaml")
-cfg = load_config(cfgpath)
+# cfgpath = Path("pipeline_config.yaml")
+# cfg = load_config(cfgpath)
+# run_pipeline(cfg)
+
+# %%

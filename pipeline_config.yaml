@@ -16,11 +16,8 @@ training_kwargs:
   checkpoint_directory: checkpoints
   checkpoint_on_failure: true
 
-
 save:
   directory: results
-
-
 
 
 # ezek lehet jók később ha d-p-re fókuszálunk
@@ -68,10 +65,12 @@ evaluation_fallback: False
 filter_validation_when_testing:  True
 use_tqdm: True
 
+
 # 1. Dataset
 # dataset_config_path: or
 dataset_config:
   kg_path: "primekg/kg.csv"
+  # label: 
 
   key: "name" # "index" or "name"
 
@@ -85,7 +84,7 @@ dataset_config:
   random_seed: 42
 
   # not working yet
-  features:
+  features: 
   #   enabled: true
 
   relation_types:

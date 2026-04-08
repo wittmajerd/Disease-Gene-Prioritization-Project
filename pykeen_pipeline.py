@@ -35,6 +35,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
         raise ValueError("Config root must be a mapping/object")
     return data
 
+
 def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[EagerDataset, str]:
     dataset_hash = hashlib.sha256(json.dumps(dataset_cfg, sort_keys=True).encode("utf-8")).hexdigest()[:8]
     dataset_label = dataset_cfg.get("label", f"dataset_{dataset_hash}")
@@ -57,6 +58,7 @@ def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[EagerData
 
     return dataset.get_dataset(), dataset_label
 
+
 def get_model(model_cfg: dict[str, Any]) -> tuple[Any, str]:
     # Later if we use own models
     pass
@@ -72,14 +74,13 @@ def run_pipeline(config: dict[str, Any]):
 
     save_cfg = config.get("save", {})
     base_dir = Path(save_cfg.get("directory", "results"))
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    run_name = save_cfg.get("run_name", f"{dataset_label}_{model}_{timestamp}")
+    run_name = f"{dataset_label}_{model}_{save_cfg.get("run_name", "")}"
 
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     training_kwargs = config.get("training_kwargs", {})
-    training_kwargs["checkpoint_directory"] = output_dir / "checkpoints"
+    training_kwargs["checkpoint_directory"] = output_dir
 
     # HPO pipline param optim? ablation study
     print("Running pipeline with config:")
@@ -119,7 +120,7 @@ def run_pipeline(config: dict[str, Any]):
         result_tracker = config.get("result_tracker", None),
         result_tracker_kwargs = config.get("result_tracker_kwargs", None),
         # Misc
-        metadata = config.get("metadata", None),
+        # metadata = config.get("metadata", None),
         device = config.get("device", None),
         random_seed = config.get("random_seed", 42),
         use_testing_data = config.get("use_testing_data", True),

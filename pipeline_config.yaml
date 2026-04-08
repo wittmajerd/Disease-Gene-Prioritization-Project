@@ -9,7 +9,7 @@ save:
 # evaluation_relation_whitelist:
 
 # 2. Model
-model: TransE
+model: DistMult
 model_kwargs:
   embedding_dim: 200
 # 3. Loss
@@ -34,17 +34,17 @@ negative_sampler:
 negative_sampler_kwargs:
   num_negs_per_pos: 1
 # 7. Training
-epochs: 1
+epochs: 30
 training_kwargs:
   batch_size: 256
-  checkpoint_name: checkpoint.pt
+  checkpoint_name: checkpoint.pth
   checkpoint_frequency: 5
   checkpoint_on_failure: True
-stopper: "early"
-stopper_kwargs:
-  frequency: 2
-  patience: 10
-  relative_delta: 0.002
+# stopper: "early"
+# stopper_kwargs:
+#   frequency: 1
+#   patience: 10
+#   relative_delta: 0.002
 
 # 8. Evaluation
 evaluator: 
@@ -79,6 +79,7 @@ dataset_config:
 
   inverse_relations: True
 
+  # ezek még kissebbek is lehetnek a val mindenképp ha early stopping van
   val_count: 10000
   test_count: 10000
   random_seed: 42
@@ -133,11 +134,11 @@ dataset_config:
   node_types:
     - disease
     - gene/protein
-    - drug
-    - anatomy
-    - biological_process
-    - cellular_component
-    - effect/phenotype
-    - exposure
-    - molecular_function
-    - pathway
+    # - drug
+    # - anatomy
+    # - biological_process
+    # - cellular_component
+    # - effect/phenotype
+    # - exposure
+    # - molecular_function
+    # - pathway

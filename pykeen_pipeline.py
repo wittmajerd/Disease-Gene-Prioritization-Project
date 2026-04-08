@@ -48,77 +48,86 @@ def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[EagerData
         with dataset_path.open("rb") as f:
             dataset = pickle.load(f)
     else:
-        print(f"Building dataset from config and saving to {dataset_path}")
+        print(f"Building dataset from config")
         dataset = PrimeKGDataset(dataset_cfg)
         dataset.build_splits()
+        print(f"Saving dataset to {dataset_path}")
         with dataset_path.open("wb") as f:
             pickle.dump(dataset, f)
 
     return dataset.get_dataset(), dataset_label
 
 def get_model(model_cfg: dict[str, Any]) -> tuple[Any, str]:
-    # Implementation for resolving model
+    # Later if we use own models
     pass
 
 
 def run_pipeline(config: dict[str, Any]):
     data_path = Path(config.get("data_path", "dataset_saves"))
     dataset_cfg = config.get("dataset_config", {})
-    model_cfg = config.get("model", "TransE")
-
     dataset, dataset_label = get_dataset(data_path, dataset_cfg)
-    model, model_label = get_model(model_cfg)
 
-    result = pipeline(
-        dataset=dataset,
-        model=model,
-        # # 3. Loss
-        # loss = None,
-        # loss_kwargs = None,
-        # # 4. Regularizer
-        # regularizer =  None,
-        # regularizer_kwargs = None,
-        # # 5. Optimizer
-        # optimizer = "Adam",
-        # optimizer_kwargs = dict(lr=0.001),
-        # clear_optimizer = True,
-        # # 5.1 Learning Rate Scheduler
-        # lr_scheduler = None,
-        # lr_scheduler_kwargs = None,
-        # # 6. Training Loop
-        # training_loop = None,
-        # training_loop_kwargs = None,
-        # negative_sampler = None,
-        # negative_sampler_kwargs = None,
-        # # 7. Training
-        # epochs = None,
-        # training_kwargs = None,
-        # stopper = None,
-        # stopper_kwargs = None,
-        # # 8. Evaluation
-        # evaluator = None,
-        # evaluator_kwargs = None,
-        # evaluation_kwargs = None,
-        # # 9. Tracking
-        # result_tracker = None,
-        # result_tracker_kwargs = None,
-        # # Misc
-        # metadata = None,
-        # device = None,
-        # random_seed = None,
-        # use_testing_data = True,
-        # evaluation_fallback = False,
-        # filter_validation_when_testing = True,
-        # use_tqdm = None,
-    )
+    model = config.get("model", "TransE")
+    model_kwargs = config.get("model_kwargs", {})
 
     save_cfg = config.get("save", {})
     base_dir = Path(save_cfg.get("directory", "results"))
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-    run_name = save_cfg.get("run_name", f"{dataset_label}_{model_label}_{timestamp}")
+    run_name = save_cfg.get("run_name", f"{dataset_label}_{model}_{timestamp}")
 
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    training_kwargs = config.get("training_kwargs", {})
+    training_kwargs["checkpoint_directory"] = output_dir / "checkpoints"
+
+    # HPO pipline param optim? ablation study
+    print("Running pipeline with config:")
+    # print(json.dumps(config, indent=4))
+    result = pipeline(
+        dataset=dataset,
+        model=model,
+        model_kwargs=model_kwargs,
+        # 3. Loss
+        loss = config.get("loss", None),
+        loss_kwargs = config.get("loss_kwargs", None),
+        # 4. Regularizer
+        regularizer =  config.get("regularizer", None),
+        regularizer_kwargs = config.get("regularizer_kwargs", None),
+        # 5. Optimizer
+        optimizer = config.get("optimizer", "Adam"),
+        optimizer_kwargs = config.get("optimizer_kwargs", dict(lr=0.001)),
+        clear_optimizer = config.get("clear_optimizer", True),
+        # 5.1 Learning Rate Scheduler
+        lr_scheduler = config.get("lr_scheduler", None),
+        lr_scheduler_kwargs = config.get("lr_scheduler_kwargs", None),
+        # 6. Training Loop
+        training_loop = config.get("training_loop", None),
+        training_loop_kwargs = config.get("training_loop_kwargs", None),
+        negative_sampler = config.get("negative_sampler", None),
+        negative_sampler_kwargs = config.get("negative_sampler_kwargs", None),
+        # 7. Training
+        epochs = config.get("epochs", 10),
+        training_kwargs = training_kwargs,
+        stopper = config.get("stopper", None),
+        stopper_kwargs = config.get("stopper_kwargs", None),
+        # 8. Evaluation
+        evaluator = config.get("evaluator", None),
+        evaluator_kwargs = config.get("evaluator_kwargs", None),
+        evaluation_kwargs = config.get("evaluation_kwargs", None),
+        # 9. Tracking
+        result_tracker = config.get("result_tracker", None),
+        result_tracker_kwargs = config.get("result_tracker_kwargs", None),
+        # Misc
+        metadata = config.get("metadata", None),
+        device = config.get("device", None),
+        random_seed = config.get("random_seed", 42),
+        use_testing_data = config.get("use_testing_data", True),
+        evaluation_fallback = config.get("evaluation_fallback", True),
+        filter_validation_when_testing = config.get("filter_validation_when_testing", True),
+        use_tqdm = config.get("use_tqdm", None),
+    )
+    print("Pipeline finished. Saving results...")
     result.save_to_directory(output_dir)
     return output_dir
 
@@ -138,7 +147,7 @@ def main() -> None:
     args = parse_args()
     config = load_config(args.config)
     output_dir = run_pipeline(config)
-    print(f"Pipeline finished. Results saved to: {output_dir}")
+    print(f"Results saved to: {output_dir}")
 
 
 if __name__ == "__main__":

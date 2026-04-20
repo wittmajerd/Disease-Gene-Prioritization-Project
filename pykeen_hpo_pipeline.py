@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from pykeen.pipeline import pipeline
+from pykeen.hpo import hpo_pipeline
 from pykeen.datasets import Dataset, EagerDataset
 from pykeen.models import Model
 
@@ -79,7 +79,7 @@ def run_pipeline(config: dict[str, Any]):
     # HPO pipline param optim? ablation study
     print("Running pipeline with config:")
     # print(json.dumps(config, indent=4))
-    result = pipeline(
+    result = hpo_pipeline(
         dataset=dataset,
         model=model,
         model_kwargs=model_kwargs,

@@ -67,12 +67,19 @@ class PrimeKGDataset:
             random_state=self.random_seed,
         )
 
-        # akarunk validation/test.create_inverse_triples = True-t is? 
+        # akarunk validation/test.create_inverse_triples = True-t is?
+        # self.training.create_inverse_triples = self.inverse_relations
+        # self.validation.create_inverse_triples = self.inverse_relations
+        # self.testing.create_inverse_triples = self.inverse_relations
 
         # self.stats = self._build_stats(
         #     before_count=before_count,
         #     triples_df=triples_df,
         # )
+
+        print(f"Dataset built with {after_count} triples")
+        print(f"Train: {self.training.num_triples}, Validation: {self.validation.num_triples}, Test: {self.testing.num_triples}")
+        print(f"Inverse relations - Train: {self.training.create_inverse_triples}, Validation: {self.validation.create_inverse_triples}, Test: {self.testing.create_inverse_triples}")
 
 
     def get_dataset(self):

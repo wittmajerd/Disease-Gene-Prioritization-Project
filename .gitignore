@@ -13,3 +13,4 @@
 /results
 /model_saves
 /wandb
+*.log

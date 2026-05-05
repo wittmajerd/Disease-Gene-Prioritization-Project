@@ -10,8 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from pykeen.pipeline import pipeline
-from pykeen.datasets import Dataset, EagerDataset
-from pykeen.models import Model
+from pykeen.datasets import Dataset
 
 from dataset import PrimeKGDataset
 
@@ -35,7 +34,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
     return data
 
 
-def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[EagerDataset, str]:
+def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[Dataset, str]:
     dataset_hash = hashlib.sha256(json.dumps(dataset_cfg, sort_keys=True).encode("utf-8")).hexdigest()[:8]
     dataset_label = dataset_cfg.get("label", f"dataset_{dataset_hash}")
 
@@ -60,8 +59,9 @@ def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[EagerData
 
 def run_pipeline(config: dict[str, Any]):
     data_path = Path(config.get("data_path", "dataset_saves"))
-    dataset_cfg = config.get("dataset_config", {})
-    dataset, dataset_label = get_dataset(data_path, dataset_cfg)
+
+    dataset_config = load_config(Path(config.get("dataset_config_path", "dataset_config.yaml")))
+    dataset, dataset_label = get_dataset(data_path, dataset_config)
 
     model = config.get("model", "TransE")
     model_kwargs = config.get("model_kwargs", {})

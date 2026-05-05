@@ -3,7 +3,7 @@ dataset_config_path: dataset_config.yaml
 
 save:
   directory: results
-  run_name: test
+  run_name: HPO
 
 # ezek lehet jók később ha d-p-re fókuszálunk
 # evaluation_entity_whitelist:
@@ -16,7 +16,6 @@ model_kwargs_ranges:
     type: int
     low: 64
     high: 1024
-    step: 64
     log: True
   # entity_initializer:
   #   type: categorical
@@ -40,7 +39,6 @@ optimizer_kwargs_ranges:
     low: 0.0001
     high: 0.01
     log: True
-clear_optimizer: 
 # 5.1 Learning Rate Scheduler
 lr_scheduler: # ExponentialLR, CosineAnnealingLR
 lr_scheduler_kwargs_ranges:
@@ -53,13 +51,16 @@ lr_scheduler_kwargs_ranges:
 training_loop: 
 training_loop_kwargs:
 negative_sampler: 
-negative_sampler_kwargs:
-  num_negs_per_pos: 1
+negative_sampler_kwargs_ranges:
+  num_negs_per_pos:
+    type: int
+    low: 10
+    high: 100
+    step: 10
 # 7. Training
 n_trials: 30
 epochs: 1000
 training_kwargs:
-  checkpoint_name: checkpoint.pth
   checkpoint_frequency: 5
   checkpoint_on_failure: True
 trainer_kwargs_ranges:
@@ -68,7 +69,6 @@ trainer_kwargs_ranges:
     low: 128
     high: 1024
     step: 128
-    log: True
 stopper: "early"
 stopper_kwargs:
   frequency: 5
@@ -85,11 +85,4 @@ result_tracker: "wandb"
 result_tracker_kwargs:
   project: TransE_HPO
   # tags: test
-# Misc
-# metadata: 
-# device: "cuda"
-random_seed: 42
-# use_testing_data: True
-# evaluation_fallback: True
-# filter_validation_when_testing:  True
-# use_tqdm: True
+

@@ -1,4 +1,5 @@
 data_path: dataset_saves
+dataset_config_path: dataset_config.yaml
 
 save:
   directory: results
@@ -9,24 +10,45 @@ save:
 # evaluation_relation_whitelist:
 
 # 2. Model
-model: DistMult
-model_kwargs:
-  embedding_dim: 200
+model: TransE
+model_kwargs_ranges:
+  embedding_dim:
+    type: int
+    low: 64
+    high: 1024
+    step: 64
+    log: True
+  # entity_initializer:
+  #   type: categorical
+  #   choices: ["xavier_uniform_", "xavier_normal_", "normal_"]
 # 3. Loss
-loss: # MarginRankingLoss # ez a default az összes modellnél amit néztem
-loss_kwargs:
+loss: MarginRankingLoss # ez a default az összes modellnél amit néztem, esetleg valami Hinge, vagy BCEwithLogitsLoss?
+loss_kwargs_ranges:
+  margin:
+    type: float
+    low: 0.5
+    high: 10.0
+    step: 0.5
 # 4. Regularizer
 regularizer: 
 regularizer_kwargs:
 # 5. Optimizer
 optimizer: Adam
-optimizer_kwargs:
-  lr: 0.001
+optimizer_kwargs_ranges:
+  lr:
+    type: float
+    low: 0.0001
+    high: 0.01
+    log: True
 clear_optimizer: 
 # 5.1 Learning Rate Scheduler
-# lr_scheduler: ExponentialLR
-# lr_scheduler_kwargs:
-#   gamma: 0.9
+lr_scheduler: # ExponentialLR, CosineAnnealingLR
+lr_scheduler_kwargs_ranges:
+  gamma:
+    type: float
+    low: 0.8
+    high: 0.99
+    step: 0.01
 # 6. Training Loop
 training_loop: 
 training_loop_kwargs:
@@ -34,16 +56,23 @@ negative_sampler:
 negative_sampler_kwargs:
   num_negs_per_pos: 1
 # 7. Training
-epochs: 15
+n_trials: 30
+epochs: 1000
 training_kwargs:
-  batch_size: 256
   checkpoint_name: checkpoint.pth
   checkpoint_frequency: 5
   checkpoint_on_failure: True
+trainer_kwargs_ranges:
+  batch_size:
+    type: int
+    low: 128
+    high: 1024
+    step: 128
+    log: True
 stopper: "early"
 stopper_kwargs:
-  frequency: 1
-  patience: 10
+  frequency: 5
+  patience: 3
   relative_delta: 0.002
 
 # 8. Evaluation
@@ -54,7 +83,7 @@ evaluation_kwargs:
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:
-  project: DistMult_hpo
+  project: TransE_HPO
   # tags: test
 # Misc
 # metadata: 
@@ -64,80 +93,3 @@ random_seed: 42
 # evaluation_fallback: True
 # filter_validation_when_testing:  True
 # use_tqdm: True
-
-
-# 1. Dataset
-# dataset_config_path: or
-dataset_config:
-  kg_path: "primekg/kg.csv"
-  # label: 
-
-  key: "name" # "index" or "name"
-
-  drop_duplicates: True
-  remove_self_loops: True
-
-  inverse_relations: True
-
-  val_count: 500
-  test_count: 5000
-  random_seed: 42
-
-  # not working yet
-  features: 
-  #   enabled: True
-
-  relation_types:
-    # Disease-centric
-    - disease_disease
-    - disease_protein
-    - disease_phenotype_positive
-    - disease_phenotype_negative
-
-    # Drug-centric
-    - drug_drug
-    - drug_protein
-    - drug_effect
-    - indication        # disease 
-    - contraindication  # disease
-    - off-label use     # disease
-
-    # Gene/Protein-centric interactions & biology
-    - protein_protein
-    - bioprocess_protein
-    - bioprocess_bioprocess
-    - cellcomp_protein
-    - cellcomp_cellcomp
-    - molfunc_protein
-    - molfunc_molfunc
-    - pathway_protein
-    - pathway_pathway
-
-    # Anatomy
-    - anatomy_anatomy
-    - anatomy_protein_present
-    - anatomy_protein_absent
-
-    # Phenotype
-    - phenotype_phenotype
-    - phenotype_protein
-
-    # Exposure
-    - exposure_exposure
-    - exposure_disease
-    - exposure_protein
-    - exposure_bioprocess
-    - exposure_molfunc
-    - exposure_cellcomp
-
-  node_types:
-    - disease
-    - gene/protein
-    - drug
-    # - anatomy
-    # - biological_process
-    # - cellular_component
-    # - effect/phenotype
-    # - exposure
-    # - molecular_function
-    # - pathway

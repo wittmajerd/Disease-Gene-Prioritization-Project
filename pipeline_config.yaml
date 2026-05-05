@@ -1,4 +1,5 @@
 data_path: dataset_saves
+dataset_config_path: dataset_config.yaml
 
 save:
   directory: results
@@ -9,12 +10,14 @@ save:
 # evaluation_relation_whitelist:
 
 # 2. Model
-model: DistMult
+model: TransE
 model_kwargs:
   embedding_dim: 200
 # 3. Loss
 loss: # MarginRankingLoss # ez a default az összes modellnél amit néztem
 loss_kwargs:
+  margin: 1.0 # TransE-hez ez a default, de lehet érdemes lenne kísérletezni vele, 0.5-2 között szokott lenni a legjobb eredmény
+              # RotatE 3-30
 # 4. Regularizer
 regularizer: 
 regularizer_kwargs:
@@ -30,13 +33,13 @@ clear_optimizer:
 # 6. Training Loop
 training_loop: 
 training_loop_kwargs:
-negative_sampler: 
+negative_sampler:   # BasicNegativeSampler, BernoulliNegativeSampler, PseudoTypedNegativeSampler
 negative_sampler_kwargs:
-  num_negs_per_pos: 1
+  num_negs_per_pos: 50 # 10-100
 # 7. Training
 epochs: 15
 training_kwargs:
-  batch_size: 256
+  batch_size: 256 # bigger? 512, 1024?
   checkpoint_name: checkpoint.pth
   checkpoint_frequency: 5
   checkpoint_on_failure: True
@@ -54,7 +57,7 @@ evaluation_kwargs:
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:
-  project: DistMult_hpo
+  project: Tests
   # tags: test
 # Misc
 # metadata: 
@@ -64,80 +67,3 @@ random_seed: 42
 # evaluation_fallback: True
 # filter_validation_when_testing:  True
 # use_tqdm: True
-
-
-# 1. Dataset
-# dataset_config_path: or
-dataset_config:
-  kg_path: "primekg/kg.csv"
-  # label: 
-
-  key: "name" # "index" or "name"
-
-  drop_duplicates: True
-  remove_self_loops: True
-
-  inverse_relations: True
-
-  val_count: 500
-  test_count: 5000
-  random_seed: 42
-
-  # not working yet
-  features: 
-  #   enabled: True
-
-  relation_types:
-    # Disease-centric
-    - disease_disease
-    - disease_protein
-    - disease_phenotype_positive
-    - disease_phenotype_negative
-
-    # Drug-centric
-    - drug_drug
-    - drug_protein
-    - drug_effect
-    - indication        # disease 
-    - contraindication  # disease
-    - off-label use     # disease
-
-    # Gene/Protein-centric interactions & biology
-    - protein_protein
-    - bioprocess_protein
-    - bioprocess_bioprocess
-    - cellcomp_protein
-    - cellcomp_cellcomp
-    - molfunc_protein
-    - molfunc_molfunc
-    - pathway_protein
-    - pathway_pathway
-
-    # Anatomy
-    - anatomy_anatomy
-    - anatomy_protein_present
-    - anatomy_protein_absent
-
-    # Phenotype
-    - phenotype_phenotype
-    - phenotype_protein
-
-    # Exposure
-    - exposure_exposure
-    - exposure_disease
-    - exposure_protein
-    - exposure_bioprocess
-    - exposure_molfunc
-    - exposure_cellcomp
-
-  node_types:
-    - disease
-    - gene/protein
-    - drug
-    # - anatomy
-    # - biological_process
-    # - cellular_component
-    # - effect/phenotype
-    # - exposure
-    # - molecular_function
-    # - pathway

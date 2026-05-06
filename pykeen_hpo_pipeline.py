@@ -114,7 +114,7 @@ def run_pipeline(config: dict[str, Any]):
         evaluation_kwargs=config.get("evaluation_kwargs", None),
         # 9. Tracking
         result_tracker=config.get("result_tracker", None),
-        result_tracker_kwargs=config.get("result_tracker_kwargs", None),
+        result_tracker_kwargs=dict(project=f"{model}_HPO"),
         study_name=f"{dataset_label}_{model}_HPO",
         load_if_exists=True,
     )

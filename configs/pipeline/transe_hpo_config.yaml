@@ -1,5 +1,5 @@
 data_path: dataset_saves
-dataset_config_path: configs/dataset/hpo_config.yaml # dataset_config.yaml
+dataset_config_path: configs/dataset/hpo_config.yaml
 
 save:
   directory: results

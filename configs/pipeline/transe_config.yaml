@@ -12,30 +12,29 @@ save:
 # 2. Model
 model: TransE
 model_kwargs:
-  embedding_dim: 256
+  embedding_dim: 512
 # 3. Loss
 loss: # MarginRankingLoss # ez a default az összes modellnél amit néztem
 loss_kwargs:
-  margin: 1.0 # TransE-hez ez a default, de lehet érdemes lenne kísérletezni vele, 0.5-2 között szokott lenni a legjobb eredmény
-              # RotatE 3-30
+  margin: 1.0
 # 4. Regularizer
 regularizer: 
 regularizer_kwargs:
 # 5. Optimizer
 optimizer: Adam
 optimizer_kwargs:
-  lr: 0.01
+  lr: 0.001
 clear_optimizer: 
 # 5.1 Learning Rate Scheduler
 lr_scheduler: ExponentialLR
 lr_scheduler_kwargs:
-  gamma: 0.9
+  gamma: 0.95
 # 6. Training Loop
 training_loop: 
 training_loop_kwargs:
 negative_sampler: BasicNegativeSampler # BernoulliNegativeSampler, PseudoTypedNegativeSampler
 negative_sampler_kwargs:
-  num_negs_per_pos: 10 # 10-100
+  num_negs_per_pos: 50 # 10-100
 # 7. Training
 epochs: 150
 training_kwargs:
@@ -53,17 +52,11 @@ stopper_kwargs:
 evaluator: 
 evaluator_kwargs:
 evaluation_kwargs:
-  batch_size: 64
+  batch_size: 128
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:
-  project: TransE_HPO
+  project: KGE_Model_Comparison
   # tags: test
-# Misc
-# metadata: 
-# device: "cuda"
+
 random_seed: 42
-# use_testing_data: True
-# evaluation_fallback: True
-# filter_validation_when_testing:  True
-# use_tqdm: True

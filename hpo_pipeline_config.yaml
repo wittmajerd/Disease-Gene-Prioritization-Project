@@ -10,24 +10,17 @@ save:
 # evaluation_relation_whitelist:
 
 # 2. Model
-model: TransE
+model: RotatE
 model_kwargs_ranges:
   embedding_dim:
-    type: int
-    low: 128
-    high: 512
-    log: True
-  # entity_initializer:
-  #   type: categorical
-  #   choices: ["xavier_uniform_", "xavier_normal_", "normal_"]
+    type: categorical
+    choices: [128, 256, 512, 1024]
 # 3. Loss
 loss: MarginRankingLoss # ez a default az összes modellnél amit néztem, esetleg valami Hinge, vagy BCEwithLogitsLoss?
 loss_kwargs_ranges:
   margin:
-    type: float
-    low: 0.5
-    high: 3.0
-    step: 0.5
+    type: categorical
+    choices: [1, 3, 6, 10, 15, 20]
 # 4. Regularizer
 regularizer: 
 regularizer_kwargs:
@@ -46,35 +39,31 @@ lr_scheduler_kwargs_ranges:
     type: float
     low: 0.8
     high: 0.99
-    step: 0.01
+    log: True
 # 6. Training Loop
 training_loop: 
 training_loop_kwargs:
 negative_sampler: BasicNegativeSampler # BernoulliNegativeSampler, PseudoTypedNegativeSampler
 negative_sampler_kwargs_ranges:
   num_negs_per_pos:
-    type: int
-    low: 10
-    high: 50
-    step: 10
+    type: categorical
+    choices: [10, 25, 50, 100]
 # 7. Training
-n_trials: 30
-epochs: 500
+n_trials: 15
+epochs: 50
 training_kwargs:
   batch_size: 1024
   checkpoint_frequency: 5
   # checkpoint_name: checkpoint.pth
   checkpoint_on_failure: True
 trainer_kwargs_ranges:
-  # batch_size:
-  #   type: int
-  #   low: 512
-  #   high: 2048
-  #   step: 512
+  batch_size:
+    type: categorical
+    choices: [512, 1024, 2048]
 stopper: "early"
 stopper_kwargs:
-  frequency: 5
-  patience: 3
+  frequency: 3
+  patience: 4
   relative_delta: 0.002
 
 # 8. Evaluation
@@ -85,6 +74,5 @@ evaluation_kwargs:
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:
-  # project: TransE_HPO 
-  # tags: test
+  # project: Tests
 

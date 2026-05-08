@@ -138,10 +138,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 def main() -> None:
-    args = parse_args()
-    config = load_config(args.config)
+    # args = parse_args()
+    config_path = Path("configs/pipeline/transe_config.yaml")
+    config = load_config(config_path)
     output_dir = run_pipeline(config)
     print(f"Results saved to: {output_dir}")
+
+    for i in range(1,5):
+        config_path = Path(f"configs/pipeline/rotate_config{i}.yaml")
+        config = load_config(config_path)
+        output_dir = run_pipeline(config)
+        print(f"Results saved to: {output_dir}")
 
 
 if __name__ == "__main__":

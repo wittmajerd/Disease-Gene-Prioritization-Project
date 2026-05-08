@@ -10,13 +10,13 @@ save:
 # evaluation_relation_whitelist:
 
 # 2. Model
-model: TransE
+model: RotatE
 model_kwargs:
   embedding_dim: 512
 # 3. Loss
 loss: MarginRankingLoss # ez a default az összes modellnél amit néztem
 loss_kwargs:
-  margin: 1.0
+  margin: 3.0
 # 4. Regularizer
 regularizer: 
 regularizer_kwargs:
@@ -24,7 +24,7 @@ regularizer_kwargs:
 optimizer: Adam
 optimizer_kwargs:
   lr: 0.002
-clear_optimizer: 
+clear_optimizer:
 # 5.1 Learning Rate Scheduler
 lr_scheduler: ExponentialLR
 lr_scheduler_kwargs:
@@ -32,9 +32,9 @@ lr_scheduler_kwargs:
 # 6. Training Loop
 training_loop: 
 training_loop_kwargs:
-negative_sampler: BasicNegativeSampler # BernoulliNegativeSampler, PseudoTypedNegativeSampler
+negative_sampler: BernoulliNegativeSampler # BasicNegativeSampler, PseudoTypedNegativeSampler
 negative_sampler_kwargs:
-  num_negs_per_pos: 50 # 10-100
+  num_negs_per_pos: 50
 # 7. Training
 epochs: 100
 training_kwargs:
@@ -56,7 +56,12 @@ evaluation_kwargs:
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:
-  project: TransE_HPO
-  # tags: test
-
+  project: RotatE_HPO
+# Misc
+# metadata: 
+# device: "cuda"
 random_seed: 42
+# use_testing_data: True
+# evaluation_fallback: True
+# filter_validation_when_testing:  True
+# use_tqdm: True

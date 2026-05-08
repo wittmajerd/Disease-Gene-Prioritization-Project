@@ -1,0 +1,78 @@
+data_path: dataset_saves
+dataset_config_path: configs/dataset/hpo_config.yaml # dataset_config.yaml
+
+save:
+  directory: results
+  run_name: HPO
+
+# ezek lehet jók később ha d-p-re fókuszálunk
+# evaluation_entity_whitelist:
+# evaluation_relation_whitelist:
+
+# 2. Model
+model: RotatE
+model_kwargs_ranges:
+  embedding_dim:
+    type: categorical
+    choices: [128, 256, 512, 1024]
+# 3. Loss
+loss: MarginRankingLoss # ez a default az összes modellnél amit néztem, esetleg valami Hinge, vagy BCEwithLogitsLoss?
+loss_kwargs_ranges:
+  margin:
+    type: categorical
+    choices: [1, 3, 6, 10, 15, 20]
+# 4. Regularizer
+regularizer: 
+regularizer_kwargs:
+# 5. Optimizer
+optimizer: Adam
+optimizer_kwargs_ranges:
+  lr:
+    type: float
+    low: 0.0001
+    high: 0.01
+    log: True
+# 5.1 Learning Rate Scheduler
+lr_scheduler: ExponentialLR  # CosineAnnealingLR
+lr_scheduler_kwargs_ranges:
+  gamma:
+    type: float
+    low: 0.8
+    high: 0.99
+    log: True
+# 6. Training Loop
+training_loop: 
+training_loop_kwargs:
+negative_sampler: BasicNegativeSampler # BernoulliNegativeSampler, PseudoTypedNegativeSampler
+negative_sampler_kwargs_ranges:
+  num_negs_per_pos:
+    type: categorical
+    choices: [10, 25, 50, 100]
+# 7. Training
+n_trials: 15
+epochs: 50
+training_kwargs:
+  batch_size: 1024
+  checkpoint_frequency: 5
+  # checkpoint_name: checkpoint.pth
+  checkpoint_on_failure: True
+trainer_kwargs_ranges:
+  batch_size:
+    type: categorical
+    choices: [512, 1024, 2048]
+stopper: "early"
+stopper_kwargs:
+  frequency: 3
+  patience: 4
+  relative_delta: 0.002
+
+# 8. Evaluation
+evaluator: 
+evaluator_kwargs:
+evaluation_kwargs:
+  batch_size: 128
+# 9. Tracking
+result_tracker: "wandb"
+result_tracker_kwargs:
+  # project: Tests
+

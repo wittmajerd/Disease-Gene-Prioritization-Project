@@ -1,32 +1,31 @@
 data_path: dataset_saves
-dataset_config_path: dataset_config.yaml
+dataset_config_path: dataset_config.yaml # configs/dataset/hpo_config.yaml
 
 save:
   directory: results
-  run_name: test
 
 # ezek lehet jók később ha d-p-re fókuszálunk
-# evaluation_entity_whitelist:
-# evaluation_relation_whitelist:
+evaluation_entity_whitelist:
+evaluation_relation_whitelist: disease_protein
 
 # 2. Model
-model: TransE
+model: RotatE # TransE
 model_kwargs:
-  embedding_dim: 512
+  embedding_dim: 256
 # 3. Loss
-loss: # MarginRankingLoss # ez a default az összes modellnél amit néztem
+loss: MarginRankingLoss # ez a default az összes modellnél amit néztem
 loss_kwargs:
-  margin: 1.0
+  margin: 1.0 # ezt kicsit tesztelni rotate 1 3 10 
 # 4. Regularizer
 regularizer: 
 regularizer_kwargs:
 # 5. Optimizer
 optimizer: Adam
 optimizer_kwargs:
-  lr: 0.001
-clear_optimizer: 
+  lr: 0.001 # kicsit több? 0.005
+clear_optimizer: True # what does this do?
 # 5.1 Learning Rate Scheduler
-lr_scheduler: ExponentialLR
+lr_scheduler: ExponentialLR # CosineAnnealingLR?
 lr_scheduler_kwargs:
   gamma: 0.9
 # 6. Training Loop
@@ -52,16 +51,16 @@ stopper_kwargs:
 evaluator: 
 evaluator_kwargs:
 evaluation_kwargs:
-  batch_size: 128
+  batch_size: 512 # ez menyi lehet max?
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:
   project: Test
 # Misc
 # metadata: 
-# device: "cuda"
+device: "cuda"
 random_seed: 42
 # use_testing_data: True
 # evaluation_fallback: True
-# filter_validation_when_testing:  True
-# use_tqdm: True
+filter_validation_when_testing: True # False?
+use_tqdm: False

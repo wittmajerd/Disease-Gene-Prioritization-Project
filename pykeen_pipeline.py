@@ -66,12 +66,18 @@ def run_pipeline(config: dict[str, Any]):
     model = config.get("model", "TransE")
     model_kwargs = config.get("model_kwargs", {})
 
+    run_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode("utf-8")).hexdigest()[:8]
+
     save_cfg = config.get("save", {})
     base_dir = Path(save_cfg.get("directory", "results"))
-    run_name = f"{dataset_label}_{model}_{save_cfg.get('run_name', '')}"
+    run_name = f"{dataset_label}_{model}_{run_hash}"
 
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    # save config for reproducibility
+    with (output_dir / "config.yaml").open("w", encoding="utf-8") as f:
+        yaml.dump(config, f)
 
     training_kwargs = config.get("training_kwargs", {})
     training_kwargs["checkpoint_directory"] = output_dir
@@ -139,16 +145,31 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     # args = parse_args()
-    config_path = Path("configs/pipeline/transe_config.yaml")
+    # config_path = Path("configs/pipeline/transe_config.yaml")
+    # config = load_config(config_path)
+    # output_dir = run_pipeline(config)
+    # print(f"Results saved to: {output_dir}")
+
+    # todo run these
+    config_path = Path(f"configs/pipeline/rotate_config3.yaml")
     config = load_config(config_path)
     output_dir = run_pipeline(config)
     print(f"Results saved to: {output_dir}")
 
-    for i in range(1,5):
-        config_path = Path(f"configs/pipeline/rotate_config{i}.yaml")
-        config = load_config(config_path)
-        output_dir = run_pipeline(config)
-        print(f"Results saved to: {output_dir}")
+    config_path = Path(f"configs/pipeline/rotate_config4.yaml")
+    config = load_config(config_path)
+    output_dir = run_pipeline(config)
+    print(f"Results saved to: {output_dir}")
+
+    config_path = Path(f"configs/pipeline/rotate_config2.yaml")
+    config = load_config(config_path)
+    output_dir = run_pipeline(config)
+    print(f"Results saved to: {output_dir}")
+
+    config_path = Path(f"configs/pipeline/rotate_config1.yaml")
+    config = load_config(config_path)
+    output_dir = run_pipeline(config)
+    print(f"Results saved to: {output_dir}")
 
 
 if __name__ == "__main__":

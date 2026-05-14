@@ -3,7 +3,7 @@ dataset_config_path: configs/dataset/hpo_config.yaml
 
 save:
   directory: results
-  run_name: HPO
+  run_name: HPO_1
 
 # ezek lehet jók később ha d-p-re fókuszálunk
 # evaluation_entity_whitelist:
@@ -12,7 +12,7 @@ save:
 # 2. Model
 model: RotatE
 model_kwargs:
-  embedding_dim: 512
+  embedding_dim: 256
 # 3. Loss
 loss: MarginRankingLoss # ez a default az összes modellnél amit néztem
 loss_kwargs:
@@ -64,4 +64,4 @@ random_seed: 42
 # use_testing_data: True
 # evaluation_fallback: True
 # filter_validation_when_testing:  True
-# use_tqdm: True
+use_tqdm: False

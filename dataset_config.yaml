@@ -9,7 +9,7 @@ remove_self_loops: True
 inverse_relations: True
 
 # g-d (80k base) éleknek nagyjából 64-8-8k / 80-10-10%  vagy 72-4-4 ami 90-5-5% ???
-val_count: 8000
+val_count: 2000
 test_count: 32000
 random_seed: 42
 

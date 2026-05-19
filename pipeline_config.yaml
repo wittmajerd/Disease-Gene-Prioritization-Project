@@ -23,7 +23,7 @@ regularizer_kwargs:
 optimizer: Adam
 optimizer_kwargs:
   lr: 0.001 # kicsit több? 0.005
-clear_optimizer: True # False if want to continue training from checkpoint
+clear_optimizer: False # False if want to continue training from checkpoint
 # 5.1 Learning Rate Scheduler
 lr_scheduler: ExponentialLR # CosineAnnealingLR?
 lr_scheduler_kwargs:
@@ -35,34 +35,32 @@ negative_sampler: BasicNegativeSampler # BernoulliNegativeSampler, PseudoTypedNe
 negative_sampler_kwargs:
   num_negs_per_pos: 50
 # 7. Training
-epochs: 150
+epochs: 75
 training_kwargs:
   batch_size: 1024
   checkpoint_name: checkpoint.pth
-  checkpoint_frequency: 10 # minutes
+  # checkpoint_frequency: 10 # minutes
   checkpoint_on_failure: True
 stopper: "early"
 stopper_kwargs:
-  frequency: 10
-  patience: 2
+  frequency: 60
+  patience: 1
   relative_delta: 0.005
-  evaluator_kwargs:
-    filtered: False
 
 # 8. Evaluation
 evaluator: 
 evaluator_kwargs:
 evaluation_kwargs:
-  batch_size: 256
+  batch_size: 2
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:
-  project: Test
+  project: Long_train_wo_early_stopping
 # Misc
 # metadata: 
-device: "cuda"
+# device: "cuda"
 random_seed: 42
 # use_testing_data: True
-# evaluation_fallback: True
+evaluation_fallback: False
 # filter_validation_when_testing: True
-# use_tqdm: False
+use_tqdm: True

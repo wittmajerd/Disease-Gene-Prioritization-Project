@@ -14,3 +14,4 @@
 /model_saves
 /wandb
 *.log
+/results_old

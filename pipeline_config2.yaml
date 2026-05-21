@@ -9,11 +9,11 @@ evaluation_entity_whitelist:
 evaluation_relation_whitelist: disease_protein
 
 # 2. Model
-model: CompGCN # TransE, RotatE, CompGCN, RGCN
+model: RGCN # TransE, RotatE, CompGCN, RGCN
 model_kwargs:
   embedding_dim: 256
 # 3. Loss
-loss: MarginRankingLoss # ez a default az összes modellnél de rotate NSSALoss tesztelni
+loss: MarginRankingLoss # ez a default az összes modellnél amit néztem
 loss_kwargs:
   margin: 1.0
 # 4. Regularizer

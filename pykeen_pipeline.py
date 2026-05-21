@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import pickle
@@ -150,6 +151,28 @@ def main() -> None:
     output_dir = run_pipeline(config)
     print(f"Results saved to: {output_dir}")
 
+    config_path = Path("pipeline_config2.yaml")
+    config = load_config(config_path)
+    output_dir = run_pipeline(config)
+    print(f"Results saved to: {output_dir}")
+
+    config_path = Path("pipeline_config3.yaml")
+    config = load_config(config_path)
+    output_dir = run_pipeline(config)
+    print(f"Results saved to: {output_dir}")
+
+    config_path = Path("pipeline_config4.yaml")
+    config = load_config(config_path)
+    output_dir = run_pipeline(config)
+    print(f"Results saved to: {output_dir}")
+
+    config_path = Path("pipeline_config5.yaml")
+    config = load_config(config_path)
+    output_dir = run_pipeline(config)
+    print(f"Results saved to: {output_dir}")
+
+    print(datetime.now())
+    ctypes.windll.PowrProf.SetSuspendState(False, True, False)
 
 if __name__ == "__main__":
     main()

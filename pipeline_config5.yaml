@@ -12,13 +12,19 @@ evaluation_relation_whitelist: disease_protein
 model: CompGCN # TransE, RotatE, CompGCN, RGCN
 model_kwargs:
   embedding_dim: 256
+  encoder_kwargs:
+    layer_kwargs:
+      dropout: 0.2
 # 3. Loss
-loss: MarginRankingLoss # ez a default az összes modellnél de rotate NSSALoss tesztelni
+loss: MarginRankingLoss # ez a default az összes modellnél amit néztem
 loss_kwargs:
-  margin: 1.0
+  margin: 1.0 # ezt kicsit tesztelni rotate 1 3 10 
 # 4. Regularizer
-regularizer: 
+regularizer: powersum
 regularizer_kwargs:
+  p: 2
+  weight: 0.00001
+  normalize: False
 # 5. Optimizer
 optimizer: Adam
 optimizer_kwargs:

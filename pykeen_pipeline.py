@@ -145,34 +145,43 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 def main() -> None:
-    # args = parse_args()
-    config_path = Path("pipeline_config.yaml")
-    config = load_config(config_path)
-    output_dir = run_pipeline(config)
-    print(f"Results saved to: {output_dir}")
+    try:
+        # args = parse_args()
+        # config_path = Path("pipeline_config.yaml")
+        # config = load_config(config_path)
+        # output_dir = run_pipeline(config)
+        # print(f"Results saved to: {output_dir}")
 
-    config_path = Path("pipeline_config2.yaml")
-    config = load_config(config_path)
-    output_dir = run_pipeline(config)
-    print(f"Results saved to: {output_dir}")
+        # config_path = Path("pipeline_config2.yaml")
+        # config = load_config(config_path)
+        # output_dir = run_pipeline(config)
+        # print(f"Results saved to: {output_dir}")
 
-    config_path = Path("pipeline_config3.yaml")
-    config = load_config(config_path)
-    output_dir = run_pipeline(config)
-    print(f"Results saved to: {output_dir}")
+        config_path = Path("pipeline_config3.yaml")
+        config = load_config(config_path)
+        output_dir = run_pipeline(config)
+        print(f"Results saved to: {output_dir}")
 
-    config_path = Path("pipeline_config4.yaml")
-    config = load_config(config_path)
-    output_dir = run_pipeline(config)
-    print(f"Results saved to: {output_dir}")
+        # config_path = Path("pipeline_config4.yaml")
+        # config = load_config(config_path)
+        # output_dir = run_pipeline(config)
+        # print(f"Results saved to: {output_dir}")
 
-    config_path = Path("pipeline_config5.yaml")
-    config = load_config(config_path)
-    output_dir = run_pipeline(config)
-    print(f"Results saved to: {output_dir}")
+        # config_path = Path("pipeline_config5.yaml")
+        # config = load_config(config_path)
+        # output_dir = run_pipeline(config)
+        # print(f"Results saved to: {output_dir}")
 
-    print(datetime.now())
-    ctypes.windll.PowrProf.SetSuspendState(False, True, False)
+    except Exception as e:
+        import traceback
+        error_msg = f"An exception occurred during training:\n{traceback.format_exc()}"
+        print(error_msg, flush=True)
+    finally:
+        import time
+        print(datetime.now(), flush=True)
+        print("Going to sleep in 10 seconds...", flush=True)
+        time.sleep(10)
+        # ctypes.windll.PowrProf.SetSuspendState(False, True, False)
 
 if __name__ == "__main__":
     main()

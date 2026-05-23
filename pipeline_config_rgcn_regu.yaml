@@ -1,5 +1,5 @@
 data_path: dataset_saves
-dataset_config_path: dataset_config2.yaml # configs/dataset/hpo_config.yaml
+dataset_config_path: dataset_config.yaml # configs/dataset/hpo_config.yaml
 
 save:
   directory: results
@@ -8,15 +8,14 @@ save:
 evaluation_entity_whitelist:
 evaluation_relation_whitelist: disease_protein
 
-# NEEDS INVERSE TRIPLES!!!
-
 # 2. Model
-model: CompGCN # TransE, RotatE, CompGCN, RGCN
+model: RGCN # TransE, RotatE, CompGCN, RGCN
 model_kwargs:
   embedding_dim: 256
-  encoder_kwargs:
-    layer_kwargs:
-      dropout: 0.2
+  edge_dropout: 0.2
+  decomposition: bases
+  decomposition_kwargs:
+    num_bases: 30
 # 3. Loss
 loss: MarginRankingLoss # ez a default az összes modellnél amit néztem
 loss_kwargs:
@@ -49,6 +48,7 @@ training_kwargs:
   checkpoint_name: checkpoint.pth
   # checkpoint_frequency: 10 # minutes
   checkpoint_on_failure: True
+  sampler: schlichtkrull
 stopper: "early"
 stopper_kwargs:
   frequency: 60

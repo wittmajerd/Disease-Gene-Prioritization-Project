@@ -32,8 +32,9 @@ lr_scheduler: ExponentialLR # CosineAnnealingLR?
 lr_scheduler_kwargs:
   gamma: 0.9
 # 6. Training Loop
-training_loop: 
+training_loop: # slcwa or lcwa
 training_loop_kwargs:
+  # automatic_memory_optimization: False
 negative_sampler: BasicNegativeSampler # BernoulliNegativeSampler, PseudoTypedNegativeSampler
 negative_sampler_kwargs:
   num_negs_per_pos: 50
@@ -44,6 +45,7 @@ training_kwargs:
   checkpoint_name: checkpoint.pth
   # checkpoint_frequency: 10 # minutes
   checkpoint_on_failure: True
+  # sampler: schlichtkrull
 stopper: "early"
 stopper_kwargs:
   frequency: 60

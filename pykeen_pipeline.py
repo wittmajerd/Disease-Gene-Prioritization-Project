@@ -147,30 +147,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     try:
         # args = parse_args()
-        # config_path = Path("pipeline_config.yaml")
-        # config = load_config(config_path)
-        # output_dir = run_pipeline(config)
-        # print(f"Results saved to: {output_dir}")
-
-        # config_path = Path("pipeline_config2.yaml")
-        # config = load_config(config_path)
-        # output_dir = run_pipeline(config)
-        # print(f"Results saved to: {output_dir}")
-
-        config_path = Path("pipeline_config3.yaml")
+        config_path = Path("pipeline_config.yaml")
         config = load_config(config_path)
         output_dir = run_pipeline(config)
         print(f"Results saved to: {output_dir}")
-
-        # config_path = Path("pipeline_config4.yaml")
-        # config = load_config(config_path)
-        # output_dir = run_pipeline(config)
-        # print(f"Results saved to: {output_dir}")
-
-        # config_path = Path("pipeline_config5.yaml")
-        # config = load_config(config_path)
-        # output_dir = run_pipeline(config)
-        # print(f"Results saved to: {output_dir}")
 
     except Exception as e:
         import traceback
@@ -181,7 +161,7 @@ def main() -> None:
         print(datetime.now(), flush=True)
         print("Going to sleep in 10 seconds...", flush=True)
         time.sleep(10)
-        # ctypes.windll.PowrProf.SetSuspendState(False, True, False)
+        ctypes.windll.PowrProf.SetSuspendState(False, True, False)
 
 if __name__ == "__main__":
     main()

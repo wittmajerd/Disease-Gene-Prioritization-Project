@@ -2,7 +2,7 @@ data_path: dataset_saves
 dataset_config_path: dataset_config.yaml # configs/dataset/hpo_config.yaml
 
 save:
-  directory: results
+  directory: dataset_gridsearch_results
 
 # ezek lehet jók később ha d-p-re fókuszálunk
 evaluation_entity_whitelist:
@@ -60,9 +60,9 @@ evaluation_kwargs:
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:
-  project: Long_train_wo_early_stopping
-  tags: 
-    - full_ds_with_inverse
+  project: DatasetGridSearch
+  # tags: 
+  #   - full_ds_with_inverse
   # reinit: finish_previous
 # Misc
 # metadata: 

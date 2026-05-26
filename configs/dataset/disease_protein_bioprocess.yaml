@@ -1,0 +1,18 @@
+kg_path: "primekg/kg_filtered.csv" # "primekg/kg.csv"
+label: disease_protein_bioprocess
+
+key: "name" # "index" or "name"
+
+drop_duplicates: True
+remove_self_loops: True
+
+inverse_relations: True
+
+val_count: 2000
+test_count: 16000
+random_seed: 42
+
+node_types:
+  - disease
+  - gene/protein
+  - biological_process

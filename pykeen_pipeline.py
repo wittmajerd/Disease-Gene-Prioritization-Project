@@ -58,7 +58,7 @@ def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[Dataset, 
     return dataset.get_dataset(), dataset_label
 
 
-def run_pipeline(config: dict[str, Any]):
+def run_pipeline(config: dict[str, Any], random_seed: int):
     data_path = Path(config.get("data_path", "dataset_saves"))
 
     dataset_config = load_config(Path(config.get("dataset_config_path", "dataset_config.yaml")))
@@ -71,7 +71,7 @@ def run_pipeline(config: dict[str, Any]):
 
     save_cfg = config.get("save", {})
     base_dir = Path(save_cfg.get("directory", "results"))
-    run_name = f"{dataset_label}_{model}_{run_hash}"
+    run_name = f"{dataset_label}_{model}_{run_hash}_{random_seed}"
 
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +121,7 @@ def run_pipeline(config: dict[str, Any]):
         result_tracker = config.get("result_tracker", None),
         result_tracker_kwargs = config.get("result_tracker_kwargs", None),
         # Misc - a többi jó alapbeállításon
-        random_seed = config.get("random_seed", 42),
+        random_seed = random_seed,
     )
     print("Pipeline finished. Saving results...")
     print(f"Hits@10: {result.get_metric('hits@10'):.4f}")
@@ -146,11 +146,14 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     try:
-        # args = parse_args()
-        config_path = Path("pipeline_config.yaml")
-        config = load_config(config_path)
-        output_dir = run_pipeline(config)
-        print(f"Results saved to: {output_dir}")
+
+        seeds = [42, 123, 456, 789, 101112]  # List of random seeds for multiple runs
+        for seed in seeds:
+            print(f"Running pipeline with random seed: {seed}")
+            config_path = Path("pipeline_config.yaml")
+            config = load_config(config_path)
+            output_dir = run_pipeline(config, random_seed=seed)
+            print(f"Results saved to: {output_dir}")
 
     except Exception as e:
         import traceback

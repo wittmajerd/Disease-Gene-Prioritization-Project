@@ -40,7 +40,7 @@ negative_sampler: BasicNegativeSampler # BernoulliNegativeSampler, PseudoTypedNe
 negative_sampler_kwargs:
   num_negs_per_pos: 50
 # 7. Training
-epochs: 30
+epochs: 200
 training_kwargs:
   batch_size: 1024
   checkpoint_name: checkpoint.pth
@@ -50,12 +50,12 @@ training_kwargs:
 stopper: "early"
 stopper_kwargs:
   frequency: 5
-  patience: 1
+  patience: 3
   relative_delta: 0.005
   metric: mean_reciprocal_rank # hits_at_k, mean_reciprocal_rank
 
 # 8. Evaluation
-evaluator: RankBasedEvaluator
+evaluator: RankBasedEvaluator # MacroRankBasedEvaluator, SampledRankBasedEvaluator
 evaluator_kwargs:
   filtered: True
 evaluation_kwargs:
@@ -70,7 +70,7 @@ result_tracker_kwargs:
 # Misc
 # metadata: 
 # device: "cuda"
-random_seed: 42
+# random_seed: 42
 # use_testing_data: True
 evaluation_fallback: False
 # filter_validation_when_testing: True

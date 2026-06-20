@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import gc
 import glob
 import hashlib
 import json
@@ -59,7 +60,7 @@ def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[Dataset, 
     return dataset.get_dataset(), dataset_label
 
 
-def run_pipeline(config: dict[str, Any], dataset_config: dict[str, Any]):
+def run_pipeline(config: dict[str, Any], dataset_config: dict[str, Any], random_seed: int):
     data_path = Path(config.get("data_path", "dataset_saves"))
 
     dataset, dataset_label = get_dataset(data_path, dataset_config)
@@ -71,14 +72,14 @@ def run_pipeline(config: dict[str, Any], dataset_config: dict[str, Any]):
 
     save_cfg = config.get("save", {})
     base_dir = Path(save_cfg.get("directory", "results"))
-    run_name = f"{dataset_label}_{model}_{run_hash}"
+    run_name = f"{dataset_label}_{model}_{run_hash}_{random_seed}"
 
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     config["training_kwargs"]["checkpoint_directory"] = output_dir
     config["stopper_kwargs"]["best_model_path"] = output_dir / "best_model.pth"
-    config["result_tracker_kwargs"]["tags"] = [dataset_label]
+    config["result_tracker_kwargs"]["tags"] = [dataset_label, str(random_seed)]
 
     # save config for reproducibility
     with (output_dir / "config.yaml").open("w", encoding="utf-8") as f:
@@ -122,7 +123,7 @@ def run_pipeline(config: dict[str, Any], dataset_config: dict[str, Any]):
         result_tracker = config.get("result_tracker", None),
         result_tracker_kwargs = config.get("result_tracker_kwargs", None),
         # Misc - a többi jó alapbeállításon
-        random_seed = config.get("random_seed", 42),
+        random_seed = random_seed,
     )
     print("Pipeline finished. Saving results...")
     print(f"Hits@10: {result.get_metric('hits@10'):.4f}")
@@ -147,14 +148,32 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     try:
-        for dataset_cfg_path in glob.glob("configs/dataset/disease_protein*.yaml"):
+        # configs = glob.glob("configs/dataset/disease_protein*.yaml")
+        configs = [
+            # 'configs/dataset\\disease_protein_anatomy.yaml', 
+            # 'configs/dataset\\disease_protein_bioprocess.yaml', these are done
+            # 'configs/dataset\\disease_protein_cellcomp.yaml', 
+            'configs/dataset\\disease_protein_drug.yaml', 
+            'configs/dataset\\disease_protein_exposure.yaml', 
+            'configs/dataset\\disease_protein_hetero.yaml', 
+            'configs/dataset\\disease_protein_homo.yaml', 
+            'configs/dataset\\disease_protein_molecular.yaml', 
+            'configs/dataset\\disease_protein_pathway.yaml', 
+            'configs/dataset\\disease_protein_phenotype.yaml'
+            ]
+        for dataset_cfg_path in configs:
             print(f"Processing dataset config: {dataset_cfg_path}")
             dataset_config = load_config(Path(dataset_cfg_path))
 
-            config_path = Path("pipeline_config.yaml")
-            config = load_config(config_path)
-            output_dir = run_pipeline(config, dataset_config)
-            print(f"Results saved to: {output_dir}")
+            seeds = [42, 123, 456]  # List of random seeds for multiple runs
+            for seed in seeds:
+                print(f"Running pipeline with random seed: {seed}")
+
+                config_path = Path("pipeline_config.yaml")
+                config = load_config(config_path)
+                output_dir = run_pipeline(config, dataset_config, seed)
+                print(f"Results saved to: {output_dir}")
+                gc.collect()  # Force garbage collection to free memory after each run
 
     except Exception as e:
         import traceback
@@ -163,9 +182,9 @@ def main() -> None:
     finally:
         import time
         print(datetime.now(), flush=True)
-        print("Going to sleep in 10 seconds...", flush=True)
-        time.sleep(10)
-        ctypes.windll.PowrProf.SetSuspendState(False, True, False)
+        # print("Going to sleep in 10 seconds...", flush=True)
+        # time.sleep(10)
+        # ctypes.windll.PowrProf.SetSuspendState(False, True, False)
 
 if __name__ == "__main__":
     main()

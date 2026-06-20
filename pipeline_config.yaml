@@ -3,7 +3,7 @@ data_path: dataset_saves
 dataset_config_path: configs/dataset/disease_protein_drug.yaml
 
 save:
-  directory: eval_tests
+  directory: dataset_gridsearch_results
 
 # ezek lehet jók később ha d-p-re fókuszálunk
 evaluation_entity_whitelist:
@@ -63,7 +63,7 @@ evaluation_kwargs:
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:
-  project: Test
+  project: DatasetGridSearch2
   # tags: 
   #   - full_ds_with_inverse
   # reinit: finish_previous

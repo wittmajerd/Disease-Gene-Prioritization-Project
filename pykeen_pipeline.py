@@ -76,8 +76,8 @@ def run_pipeline(config: dict[str, Any], random_seed: int):
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    config["training_kwargs"]["checkpoint_directory"] = output_dir
-    config["stopper_kwargs"]["best_model_path"] = output_dir / "best_model.pth"
+    config["training_kwargs"]["checkpoint_directory"] = str(output_dir)
+    config["stopper_kwargs"]["best_model_path"] = str(output_dir / "best_model.pth")
     config["result_tracker_kwargs"]["tags"] = [dataset_label, str(random_seed)]
 
     # save config for reproducibility
@@ -147,13 +147,22 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     try:
-        seeds = [42, 123, 456]  # List of random seeds for multiple runs 789, 101112
-        for seed in seeds:
-            print(f"Running pipeline with random seed: {seed}")
-            config_path = Path("pipeline_config.yaml")
+        configs = [
+            # Path("pipeline_config.yaml"),
+            # Path("pipeline_config_base.yaml"),
+            # Path("pipeline_config_pseudo.yaml"),
+            Path("pipeline_config_bernoulli.yaml"),
+            Path("pipeline_config_nssa.yaml"),
+        ]
+
+        for config_path in configs:
+            print(f"Running pipeline with config: {config_path}")
             config = load_config(config_path)
-            output_dir = run_pipeline(config, random_seed=seed)
-            print(f"Results saved to: {output_dir}")
+            seeds = [42]  # List of random seeds for multiple runs 123, 456, 789, 101112
+            for seed in seeds:
+                print(f"Running pipeline with random seed: {seed}")
+                output_dir = run_pipeline(config, random_seed=seed)
+                print(f"Results saved to: {output_dir}")
 
     except Exception as e:
         import traceback
@@ -162,8 +171,8 @@ def main() -> None:
     finally:
         import time
         print(datetime.now(), flush=True)
-        # print("Going to sleep in 10 seconds...", flush=True)
-        # time.sleep(10)
+        print("Going to sleep in 30 seconds...", flush=True)
+        # time.sleep(30)
         # ctypes.windll.PowrProf.SetSuspendState(False, True, False)
 
 if __name__ == "__main__":

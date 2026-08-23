@@ -3,7 +3,7 @@ data_path: dataset_saves
 dataset_config_path: configs/dataset/disease_protein_drug.yaml
 
 save:
-  directory: results_new
+  directory: new_results
 
 # ezek lehet jók később ha d-p-re fókuszálunk
 evaluation_entity_whitelist:
@@ -14,9 +14,9 @@ model: RotatE # TransE, RotatE, CompGCN, RGCN
 model_kwargs:
   embedding_dim: 256
 # 3. Loss
-loss: MarginRankingLoss # MarginRankingLoss is the default, NSSALoss with larger margin can work eg. 10, SoftplusLoss???
+loss: NSSALoss # MarginRankingLoss is the default, NSSALoss with larger margin can work eg. 10, SoftplusLoss???
 loss_kwargs:
-  margin: 1.0
+  margin: 10.0
 # 4. Regularizer
 # regularizer: lp
 # regularizer_kwargs:

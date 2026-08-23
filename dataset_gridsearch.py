@@ -78,8 +78,8 @@ def run_pipeline(config: dict[str, Any], dataset_config: dict[str, Any], random_
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    config["training_kwargs"]["checkpoint_directory"] = output_dir
-    config["stopper_kwargs"]["best_model_path"] = output_dir / "best_model.pth"
+    config["training_kwargs"]["checkpoint_directory"] = str(output_dir)
+    config["stopper_kwargs"]["best_model_path"] = str(output_dir / "best_model.pth")
     config["result_tracker_kwargs"]["tags"] = [dataset_label, str(random_seed)]
 
     # save config for reproducibility

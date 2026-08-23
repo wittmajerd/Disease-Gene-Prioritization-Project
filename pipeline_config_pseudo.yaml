@@ -3,7 +3,7 @@ data_path: dataset_saves
 dataset_config_path: configs/dataset/disease_protein_drug.yaml
 
 save:
-  directory: results_new
+  directory: new_results
 
 # ezek lehet jók később ha d-p-re fókuszálunk
 evaluation_entity_whitelist:
@@ -36,7 +36,7 @@ lr_scheduler_kwargs:
 training_loop: # slcwa or lcwa
 training_loop_kwargs:
   # automatic_memory_optimization: False
-negative_sampler: BasicNegativeSampler # BernoulliNegativeSampler, PseudoTypedNegativeSampler
+negative_sampler: PseudoTypedNegativeSampler # BernoulliNegativeSampler, PseudoTypedNegativeSampler
 negative_sampler_kwargs:
   num_negs_per_pos: 50
 # 7. Training

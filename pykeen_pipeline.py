@@ -64,7 +64,7 @@ def run_pipeline(config: dict[str, Any], random_seed: int):
     dataset_config = load_config(Path(config.get("dataset_config_path", "dataset_config.yaml")))
     dataset, dataset_label = get_dataset(data_path, dataset_config)
 
-    model = config.get("model", "TransE")
+    model = config.get("model", "RotatE")
     model_kwargs = config.get("model_kwargs", {})
 
     run_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode("utf-8")).hexdigest()[:8]
@@ -78,6 +78,7 @@ def run_pipeline(config: dict[str, Any], random_seed: int):
 
     config["training_kwargs"]["checkpoint_directory"] = output_dir
     config["stopper_kwargs"]["best_model_path"] = output_dir / "best_model.pth"
+    config["result_tracker_kwargs"]["tags"] = [dataset_label, str(random_seed)]
 
     # save config for reproducibility
     with (output_dir / "config.yaml").open("w", encoding="utf-8") as f:
@@ -146,8 +147,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     try:
-
-        seeds = [42, 123, 456, 789, 101112]  # List of random seeds for multiple runs
+        seeds = [42, 123, 456]  # List of random seeds for multiple runs 789, 101112
         for seed in seeds:
             print(f"Running pipeline with random seed: {seed}")
             config_path = Path("pipeline_config.yaml")
@@ -162,9 +162,9 @@ def main() -> None:
     finally:
         import time
         print(datetime.now(), flush=True)
-        print("Going to sleep in 10 seconds...", flush=True)
-        time.sleep(10)
-        ctypes.windll.PowrProf.SetSuspendState(False, True, False)
+        # print("Going to sleep in 10 seconds...", flush=True)
+        # time.sleep(10)
+        # ctypes.windll.PowrProf.SetSuspendState(False, True, False)
 
 if __name__ == "__main__":
     main()

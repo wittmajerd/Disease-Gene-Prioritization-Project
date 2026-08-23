@@ -7,6 +7,7 @@ import glob
 import hashlib
 import json
 import pickle
+import torch
 import yaml
 from datetime import datetime
 from pathlib import Path
@@ -153,13 +154,13 @@ def main() -> None:
             # 'configs/dataset\\disease_protein_anatomy.yaml', 
             # 'configs/dataset\\disease_protein_bioprocess.yaml', these are done
             # 'configs/dataset\\disease_protein_cellcomp.yaml', 
-            'configs/dataset\\disease_protein_drug.yaml', 
-            'configs/dataset\\disease_protein_exposure.yaml', 
-            'configs/dataset\\disease_protein_hetero.yaml', 
-            'configs/dataset\\disease_protein_homo.yaml', 
-            'configs/dataset\\disease_protein_molecular.yaml', 
-            'configs/dataset\\disease_protein_pathway.yaml', 
-            'configs/dataset\\disease_protein_phenotype.yaml'
+            # 'configs/dataset\\disease_protein_drug.yaml', 
+            # 'configs/dataset\\disease_protein_exposure.yaml', 
+            # 'configs/dataset\\disease_protein_hetero.yaml', 
+            # 'configs/dataset\\disease_protein_homo.yaml', 
+            # 'configs/dataset\\disease_protein_molecular.yaml', 
+            # 'configs/dataset\\disease_protein_pathway.yaml', 
+            # 'configs/dataset\\disease_protein_phenotype.yaml'
             ]
         for dataset_cfg_path in configs:
             print(f"Processing dataset config: {dataset_cfg_path}")
@@ -174,6 +175,8 @@ def main() -> None:
                 output_dir = run_pipeline(config, dataset_config, seed)
                 print(f"Results saved to: {output_dir}")
                 gc.collect()  # Force garbage collection to free memory after each run
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
     except Exception as e:
         import traceback

@@ -3,7 +3,7 @@ data_path: dataset_saves
 dataset_config_path: configs/dataset/disease_protein_drug.yaml
 
 save:
-  directory: dataset_gridsearch_results
+  directory: new_results
 
 # ezek lehet jók később ha d-p-re fókuszálunk
 evaluation_entity_whitelist:
@@ -27,7 +27,7 @@ loss_kwargs:
 optimizer: Adam
 optimizer_kwargs:
   lr: 0.001 # kicsit több? 0.005
-clear_optimizer: False # False if want to continue training from checkpoint
+clear_optimizer: # False if want to continue training from checkpoint
 # 5.1 Learning Rate Scheduler
 lr_scheduler: ExponentialLR # CosineAnnealingLR?
 lr_scheduler_kwargs:
@@ -59,11 +59,11 @@ evaluator: RankBasedEvaluator # MacroRankBasedEvaluator, SampledRankBasedEvaluat
 evaluator_kwargs:
   filtered: True
 evaluation_kwargs:
-  # batch_size: 2
+  batch_size: 32
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:
-  project: DatasetGridSearch2
+  project: disease_protein_drug_with_early_stopping
   # tags: 
   #   - full_ds_with_inverse
   # reinit: finish_previous

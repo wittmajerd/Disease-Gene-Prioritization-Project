@@ -24,8 +24,8 @@ class PrimeKGDataset:
         self.relation_types: list[str] | None = config.get("relation_types", None)
         self.node_types: list[str] | None = config.get("node_types", None)
 
-        self.drop_duplicates: bool = True
-        self.remove_self_loops: bool = True
+        self.drop_duplicates: bool = config.get("drop_duplicates", True)
+        self.remove_self_loops: bool = config.get("remove_self_loops", True)
 
         self.inverse_relations: bool = config.get("inverse_relations", True)
 

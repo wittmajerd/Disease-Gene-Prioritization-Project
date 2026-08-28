@@ -78,13 +78,13 @@ def run_pipeline(config: dict[str, Any], dataset_config: dict[str, Any], random_
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    config["training_kwargs"]["checkpoint_directory"] = str(output_dir)
-    config["stopper_kwargs"]["best_model_path"] = str(output_dir / "best_model.pth")
+    config["training_kwargs"]["checkpoint_directory"] = output_dir
+    config["stopper_kwargs"]["best_model_path"] = output_dir / "best_model.pth"
     config["result_tracker_kwargs"]["tags"] = [dataset_label, str(random_seed)]
 
     # save config for reproducibility
     with (output_dir / "config.yaml").open("w", encoding="utf-8") as f:
-        yaml.dump(config, f)
+        yaml.safe_dump(config, f, sort_keys=False)
 
     # HPO pipline param optim? ablation study
     print("Running pipeline with config:")

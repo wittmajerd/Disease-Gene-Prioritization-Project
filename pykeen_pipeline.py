@@ -6,6 +6,7 @@ import hashlib
 import json
 import pickle
 import yaml
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,21 @@ from pykeen.datasets import Dataset
 from dataset import PrimeKGDataset
 
 
+class ConfigSafeLoader(yaml.SafeLoader):
+    """Safe YAML loader with support for paths emitted by yaml.dump()."""
+
+
+def _construct_path(loader: ConfigSafeLoader, node: yaml.Node) -> str:
+    parts = loader.construct_sequence(node)
+    return str(Path(*parts))
+
+
+ConfigSafeLoader.add_constructor(
+    "tag:yaml.org,2002:python/object/apply:pathlib.WindowsPath",
+    _construct_path,
+)
+
+
 def load_config(config_path: Path) -> dict[str, Any]:
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
@@ -24,7 +40,7 @@ def load_config(config_path: Path) -> dict[str, Any]:
     raw_text = config_path.read_text(encoding="utf-8")
 
     if suffix in {".yaml", ".yml"}:
-        data = yaml.safe_load(raw_text)
+        data = yaml.load(raw_text, Loader=ConfigSafeLoader)
     elif suffix == ".json":
         data = json.loads(raw_text)
     else:
@@ -59,6 +75,7 @@ def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[Dataset, 
 
 
 def run_pipeline(config: dict[str, Any], random_seed: int):
+    config = deepcopy(config)
     data_path = Path(config.get("data_path", "dataset_saves"))
 
     dataset_config = load_config(Path(config.get("dataset_config_path", "dataset_config.yaml")))
@@ -76,13 +93,13 @@ def run_pipeline(config: dict[str, Any], random_seed: int):
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    config["training_kwargs"]["checkpoint_directory"] = str(output_dir)
-    config["stopper_kwargs"]["best_model_path"] = str(output_dir / "best_model.pth")
+    config["training_kwargs"]["checkpoint_directory"] = output_dir
+    config["stopper_kwargs"]["best_model_path"] = output_dir / "best_model.pth"
     config["result_tracker_kwargs"]["tags"] = [dataset_label, str(random_seed)]
 
     # save config for reproducibility
     with (output_dir / "config.yaml").open("w", encoding="utf-8") as f:
-        yaml.dump(config, f)
+        yaml.safe_dump(config, f, sort_keys=False)
 
     # HPO pipline param optim? ablation study
     print("Running pipeline with config:")

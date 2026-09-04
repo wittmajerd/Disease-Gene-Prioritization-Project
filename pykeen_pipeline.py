@@ -99,7 +99,7 @@ def run_pipeline(config: dict[str, Any], random_seed: int):
 
     # save config for reproducibility
     with (output_dir / "config.yaml").open("w", encoding="utf-8") as f:
-        yaml.safe_dump(config, f, sort_keys=False)
+        yaml.dump(config, f, sort_keys=False)
 
     # HPO pipline param optim? ablation study
     print("Running pipeline with config:")
@@ -165,11 +165,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     try:
         configs = [
-            # Path("pipeline_config.yaml"),
+            Path("pipeline_config.yaml"),
             # Path("pipeline_config_base.yaml"),
             # Path("pipeline_config_pseudo.yaml"),
-            Path("pipeline_config_bernoulli.yaml"),
-            Path("pipeline_config_nssa.yaml"),
+            # Path("pipeline_config_bernoulli.yaml"),
+            # Path("pipeline_config_nssa.yaml"),
         ]
 
         for config_path in configs:

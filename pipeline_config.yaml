@@ -1,6 +1,6 @@
 data_path: dataset_saves
 # dataset_config_path: dataset_config.yaml # configs/dataset/hpo_config.yaml
-dataset_config_path: configs/dataset/disease_protein_homo_no_inverse.yaml
+dataset_config_path: configs/dataset/disease_protein_homo.yaml
 
 save:
   directory: results_new
@@ -10,13 +10,14 @@ evaluation_entity_whitelist:
 evaluation_relation_whitelist: disease_protein
 
 # 2. Model
-model: RGCN # TransE, RotatE, CompGCN, RGCN
+model: CompGCN # TransE, RotatE, CompGCN, RGCN
 model_kwargs:
   embedding_dim: 512
+  # num_layers: 1
 # 3. Loss
-loss: MarginRankingLoss # MarginRankingLoss is the default, NSSALoss with larger margin can work eg. 10, SoftplusLoss???
+loss: NSSALoss # MarginRankingLoss is the default, NSSALoss with larger margin can work eg. 10, SoftplusLoss???
 loss_kwargs:
-  margin: 1.0
+  margin: 10.0
 # 4. Regularizer
 # regularizer: lp
 # regularizer_kwargs:
@@ -29,9 +30,9 @@ optimizer_kwargs:
   lr: 0.001 # kicsit több? 0.005
 clear_optimizer: # False if want to continue training from checkpoint
 # 5.1 Learning Rate Scheduler
-lr_scheduler: ExponentialLR # CosineAnnealingLR?
+lr_scheduler: #ExponentialLR # CosineAnnealingLR?
 lr_scheduler_kwargs:
-  gamma: 0.9
+  # gamma: 0.9
 # 6. Training Loop
 training_loop: # slcwa or lcwa
 training_loop_kwargs:

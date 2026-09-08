@@ -1,6 +1,6 @@
 data_path: dataset_saves
 # dataset_config_path: dataset_config.yaml # configs/dataset/hpo_config.yaml
-dataset_config_path: configs/dataset/disease_protein_homo.yaml
+dataset_config_path: configs/dataset/disease_protein_homo_no_inverse.yaml
 
 save:
   directory: results_new
@@ -10,7 +10,7 @@ evaluation_entity_whitelist:
 evaluation_relation_whitelist: disease_protein
 
 # 2. Model
-model: RotatE # TransE, RotatE, CompGCN, RGCN
+model: RGCN # TransE, RotatE, CompGCN, RGCN
 model_kwargs:
   embedding_dim: 512
   # num_layers: 1

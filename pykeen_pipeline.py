@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import gc
 import hashlib
 import json
 import pickle
+import torch
+import traceback
 import yaml
 from copy import deepcopy
 from datetime import datetime
@@ -165,11 +168,11 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     try:
         configs = [
-            Path("pipeline_config.yaml"),
-            # Path("pipeline_config_base.yaml"),
+            # Path("pipeline_config_rgcn.yaml"),
+            # Path("pipeline_config.yaml"),
             # Path("pipeline_config_pseudo.yaml"),
             # Path("pipeline_config_bernoulli.yaml"),
-            # Path("pipeline_config_nssa.yaml"),
+            Path("pipeline_config_nssa.yaml"),
         ]
 
         for config_path in configs:
@@ -177,20 +180,28 @@ def main() -> None:
             config = load_config(config_path)
             seeds = [42]  # List of random seeds for multiple runs 123, 456, 789, 101112
             for seed in seeds:
-                print(f"Running pipeline with random seed: {seed}")
-                output_dir = run_pipeline(config, random_seed=seed)
-                print(f"Results saved to: {output_dir}")
+                try:
+                    print(f"Running pipeline with random seed: {seed}")
+                    output_dir = run_pipeline(config, random_seed=seed)
+                    print(f"Results saved to: {output_dir}")
+                except Exception as e:
+                    error_msg = f"An exception occurred during training with seed {seed}:\n{traceback.format_exc()}"
+                    print(error_msg, flush=True)
+                finally:
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
+                        torch.cuda.empty_cache()
 
     except Exception as e:
-        import traceback
         error_msg = f"An exception occurred during training:\n{traceback.format_exc()}"
         print(error_msg, flush=True)
     finally:
         import time
         print(datetime.now(), flush=True)
         print("Going to sleep in 30 seconds...", flush=True)
-        # time.sleep(30)
-        # ctypes.windll.PowrProf.SetSuspendState(False, True, False)
+        time.sleep(30)
+        ctypes.windll.PowrProf.SetSuspendState(False, True, False)
 
 if __name__ == "__main__":
     main()

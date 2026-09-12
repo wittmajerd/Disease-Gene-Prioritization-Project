@@ -26,8 +26,8 @@ class PrimeKGDataset:
         self.inverse_relations: bool = config.get("inverse_relations", True)
 
         self.split_relation: str = config.get("split_relation", "disease_protein")
-        self.val_count: int = config.get("val_count", 4000)
-        self.test_count: int = config.get("test_count", 16000)
+        self.val_count: int = config.get("val_count", 2000)
+        self.test_count: int = config.get("test_count", 8000)
         self.random_seed: int = config.get("random_seed", 42)
 
         # features later

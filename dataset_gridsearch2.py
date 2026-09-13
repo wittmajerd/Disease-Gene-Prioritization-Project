@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import ctypes
 import gc
 import glob
 import hashlib
@@ -45,11 +46,12 @@ def get_dataset(
     keep_relations: set[str] | None = None,
     remove_relations: set[str] | None = None,
     keep_entities: set[str] | None = None,
+    keep_entity_types: set[str] | None = None,
 ) -> tuple[Dataset, str]:
     dataset_hash = hashlib.sha256(
         json.dumps(dataset_config, sort_keys=True).encode("utf-8")
     ).hexdigest()[:8]
-    dataset_label = dataset_config.get("label", f"primekg_fixed_split_{dataset_hash}")
+    dataset_label = f"primekg_fixed_split_{dataset_config.get('random_seed')}_{dataset_hash}"
 
     if not data_path.exists():
         data_path.mkdir(parents=True, exist_ok=True)
@@ -71,6 +73,7 @@ def get_dataset(
         keep_relations=keep_relations,
         remove_relations=remove_relations,
         keep_entities=keep_entities,
+        keep_entity_types=keep_entity_types,
     ), dataset_label
 
 
@@ -88,6 +91,7 @@ def run_pipeline(
         keep_relations=experiment.get("keep_relations"),
         remove_relations=experiment.get("remove_relations"),
         keep_entities=experiment.get("keep_entities"),
+        keep_entity_types=experiment.get("keep_entity_types"),
     )
 
     model = config.get("model", "RotatE")
@@ -118,8 +122,11 @@ def run_pipeline(
     ]
 
     # save config for reproducibility
+    saved_config = copy.deepcopy(config)
+    saved_config["training_kwargs"]["checkpoint_directory"] = str(output_dir)
+    saved_config["stopper_kwargs"]["best_model_path"] = str(output_dir / "best_model.pth")
     with (output_dir / "config.yaml").open("w", encoding="utf-8") as f:
-        yaml.safe_dump(config, f, sort_keys=False)
+        yaml.safe_dump(saved_config, f, sort_keys=False)
 
     # HPO pipline param optim? ablation study
     print("Running pipeline with config:")
@@ -184,12 +191,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     try:
-        config_path = Path("pipeline_config.yaml")
+        config_path = Path("new_pipeline_config.yaml")
         config = load_config(config_path)
 
         dataset_config = {
             "kg_path": "primekg/kg_filtered.csv",
-            "label": "primekg_fixed_disease_protein_split",
             "key": "name",
             "drop_duplicates": True,
             "remove_self_loops": True,
@@ -201,50 +207,45 @@ def main() -> None:
         }
 
         experiments = [
+            # {
+            #     "label": "disease_protein",
+            #     "keep_relations": {"disease_protein"},
+            # },
             {
-                "label": "disease_protein",
-                "keep_relations": {"disease_protein"},
+                "label": "disease_protein_bipartite",
+                "keep_entity_types": {"disease", "gene/protein"},
             },
             {
                 "label": "disease_protein_drug",
-                # "keep_relations": {"disease_protein", "disease_drug"},
-                "keep_entities": {"disease_protein", "disease_drug"},
+                "keep_entity_types": {"disease", "gene/protein", "drug"},
             },
             {
                 "label": "disease_protein_anatomy",
-                "keep_relations": {"disease_protein", "disease_anatomy"},
+                "keep_entity_types": {"disease", "gene/protein", "anatomy"},
             },
             {
                 "label": "disease_protein_bioprocess",
-                "keep_relations": {"disease_protein", "disease_biological_process"},
+                "keep_entity_types": {"disease", "gene/protein", "biological_process"},
             },
             {
                 "label": "disease_protein_cellcomp",
-                "keep_relations": {"disease_protein", "disease_cellcomp"},
+                "keep_entity_types": {"disease", "gene/protein", "cellular_component"},
             },
             {
                 "label": "disease_protein_exposure",
-                "keep_relations": {"disease_protein", "disease_exposure"},
-            },
-            {
-                "label": "disease_protein_hetero",
-                "keep_relations": {"disease_protein", "disease_hetero"},
-            },
-            {
-                "label": "disease_protein_homo",
-                "keep_relations": {"disease_protein", "disease_homo"},
+                "keep_entity_types": {"disease", "gene/protein", "exposure"},
             },
             {
                 "label": "disease_protein_molecular",
-                "keep_relations": {"disease_protein", "disease_molecular"},
+                "keep_entity_types": {"disease", "gene/protein", "molecular_function"},
             },
             {
                 "label": "disease_protein_pathway",
-                "keep_relations": {"disease_protein", "disease_pathway"},
+                "keep_entity_types": {"disease", "gene/protein", "pathway"},
             },
             {
                 "label": "disease_protein_phenotype",
-                "keep_relations": {"disease_protein", "disease_phenotype"},
+                "keep_entity_types": {"disease", "gene/protein", "effect/phenotype"},
             },
         ]
 
@@ -270,9 +271,9 @@ def main() -> None:
         print(error_msg, flush=True)
     finally:
         print(datetime.now(), flush=True)
-        # print("Going to sleep in 10 seconds...", flush=True)
-        # time.sleep(10)
-        # ctypes.windll.PowrProf.SetSuspendState(False, True, False)
+        print("Going to sleep in 30 seconds...", flush=True)
+        time.sleep(30)
+        ctypes.windll.PowrProf.SetSuspendState(False, True, False)
 
 if __name__ == "__main__":
     main()

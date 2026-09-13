@@ -29,6 +29,7 @@ class PrimeKGDataset:
         self.val_count: int = config.get("val_count", 2000)
         self.test_count: int = config.get("test_count", 8000)
         self.random_seed: int = config.get("random_seed", 42)
+        self.entity_types: dict[str, set[str]] = {}
 
         # features later
 
@@ -41,6 +42,8 @@ class PrimeKGDataset:
 
         if self.drop_duplicates:
             triples_df = triples_df.drop_duplicates(subset=[self.head, self.relation, self.tail])
+
+        self.entity_types = self._build_entity_types(triples_df)
 
         if triples_df.empty:
             raise ValueError("No triples left after filtering. Please adjust the structural filters.")
@@ -94,7 +97,28 @@ class PrimeKGDataset:
 
 
 
-    def get_dataset(self, keep_relations: set = None, remove_relations: set = None, keep_entities: set = None):
+    def get_dataset(
+        self,
+        keep_relations: set = None,
+        remove_relations: set = None,
+        keep_entities: set = None,
+        keep_entity_types: set = None,
+    ):
+        if keep_entities is not None and keep_entity_types is not None:
+            raise ValueError("Specify either keep_entities or keep_entity_types, not both.")
+
+        if keep_entity_types is not None and not self.entity_types:
+            triples_df = pd.read_csv(self.kg_path, low_memory=False)
+            self.entity_types = self._build_entity_types(triples_df)
+
+        entity_labels = keep_entities
+        if keep_entity_types is not None:
+            entity_labels = {
+                entity
+                for entity, types in self.entity_types.items()
+                if types & keep_entity_types
+            }
+
         dataset = EagerDataset(
             training=self.training,
             validation=self.validation,
@@ -104,7 +128,7 @@ class PrimeKGDataset:
             dataset=dataset,
             keep_relations=keep_relations,
             remove_relations=remove_relations,
-            keep_entities=keep_entities,
+            keep_entities=entity_labels,
         )
 
         print(
@@ -118,6 +142,16 @@ class PrimeKGDataset:
             f"Test: {dataset.testing.create_inverse_triples}"
         )
         return dataset
+
+    def _build_entity_types(self, triples_df: pd.DataFrame) -> dict[str, set[str]]:
+        entity_types: dict[str, set[str]] = {}
+        for entity_column, type_column in (
+            (self.head, "x_type"),
+            (self.tail, "y_type"),
+        ):
+            for entity, entity_type in triples_df[[entity_column, type_column]].drop_duplicates().itertuples(index=False):
+                entity_types.setdefault(str(entity), set()).add(str(entity_type))
+        return entity_types
 
 
 

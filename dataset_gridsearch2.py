@@ -107,7 +107,7 @@ def run_pipeline(
 
     save_cfg = config.get("save", {})
     base_dir = Path(save_cfg.get("directory", "results"))
-    run_name = f"{dataset_label}_{model}_{run_hash}_{random_seed}"
+    run_name = f"{dataset_label}_{model}_{experiment['label']}_{run_hash}_{random_seed}"
 
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -207,12 +207,13 @@ def main() -> None:
         }
 
         experiments = [
-            # {
-            #     "label": "disease_protein",
-            #     "keep_relations": {"disease_protein"},
-            # },
+            # az elején felcseréltem a két elnevezést fordítva vannak a labelek
             {
                 "label": "disease_protein_bipartite",
+                "keep_relations": {"disease_protein"},
+            },
+            {
+                "label": "disease_protein",
                 "keep_entity_types": {"disease", "gene/protein"},
             },
             {
@@ -247,11 +248,11 @@ def main() -> None:
                 "label": "disease_protein_phenotype",
                 "keep_entity_types": {"disease", "gene/protein", "effect/phenotype"},
             },
+            # nagyobb csoportok, vagy teljes gráf ha fut
         ]
 
-        seeds = [42, 123, 456]
-        for experiment in experiments:
-            for seed in seeds:
+        for seed in [42, 123, 456]:
+            for experiment in experiments:
                 print(f"Running {experiment['label']} with random seed: {seed}")
                 run_config = copy.deepcopy(config)
                 output_dir = run_pipeline(

@@ -52,6 +52,7 @@ def get_dataset(
         json.dumps(dataset_config, sort_keys=True).encode("utf-8")
     ).hexdigest()[:8]
     dataset_label = f"primekg_fixed_split_{dataset_config.get('random_seed')}_{dataset_hash}"
+    # dataset_label = "primekg_fixed_split_42_f0ac5cf4"
 
     if not data_path.exists():
         data_path.mkdir(parents=True, exist_ok=True)
@@ -195,7 +196,7 @@ def main() -> None:
         config = load_config(config_path)
 
         dataset_config = {
-            "kg_path": "primekg/kg_filtered.csv",
+            "kg_path": "data/kg_filtered.csv",
             "key": "name",
             "drop_duplicates": True,
             "remove_self_loops": True,
@@ -215,14 +216,6 @@ def main() -> None:
             {
                 "label": "disease_protein",
                 "keep_entity_types": {"disease", "gene/protein"},
-            },
-            {
-                "label": "disease_protein_drug",
-                "keep_entity_types": {"disease", "gene/protein", "drug"},
-            },
-            {
-                "label": "disease_protein_anatomy",
-                "keep_entity_types": {"disease", "gene/protein", "anatomy"},
             },
             {
                 "label": "disease_protein_bioprocess",
@@ -248,10 +241,18 @@ def main() -> None:
                 "label": "disease_protein_phenotype",
                 "keep_entity_types": {"disease", "gene/protein", "effect/phenotype"},
             },
+            {
+                "label": "disease_protein_drug",
+                "keep_entity_types": {"disease", "gene/protein", "drug"},
+            },
+            {
+                "label": "disease_protein_anatomy",
+                "keep_entity_types": {"disease", "gene/protein", "anatomy"},
+            },
             # nagyobb csoportok, vagy teljes gráf ha fut
         ]
 
-        for seed in [42, 123, 456]:
+        for seed in [42]:
             for experiment in experiments:
                 print(f"Running {experiment['label']} with random seed: {seed}")
                 run_config = copy.deepcopy(config)
@@ -272,9 +273,9 @@ def main() -> None:
         print(error_msg, flush=True)
     finally:
         print(datetime.now(), flush=True)
-        print("Going to sleep in 30 seconds...", flush=True)
-        time.sleep(30)
-        ctypes.windll.PowrProf.SetSuspendState(False, True, False)
+        # print("Going to sleep in 30 seconds...", flush=True)
+        # time.sleep(30)
+        # ctypes.windll.PowrProf.SetSuspendState(False, True, False)
 
 if __name__ == "__main__":
     main()

@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from dataset import PrimeKGDataset
+from dataset2 import PrimeKGDataset
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
@@ -33,9 +33,19 @@ def load_config(config_path: Path) -> dict[str, Any]:
     return data
 
 
-def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[Dataset, str]:
-    dataset_hash = hashlib.sha256(json.dumps(dataset_cfg, sort_keys=True).encode("utf-8")).hexdigest()[:8]
-    dataset_label = dataset_cfg.get("label", f"dataset_{dataset_hash}")
+def get_dataset(
+    data_path: Path,
+    dataset_config: dict[str, Any],
+    keep_relations: set[str] | None = None,
+    remove_relations: set[str] | None = None,
+    keep_entities: set[str] | None = None,
+    keep_entity_types: set[str] | None = None,
+) -> tuple[Dataset, str]:
+    dataset_hash = hashlib.sha256(
+        json.dumps(dataset_config, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:8]
+    dataset_label = f"primekg_fixed_split_{dataset_config.get('random_seed')}_{dataset_hash}"
+    dataset_label = "primekg_fixed_split_42_f0ac5cf4"
 
     if not data_path.exists():
         data_path.mkdir(parents=True, exist_ok=True)
@@ -46,23 +56,36 @@ def get_dataset(data_path: Path, dataset_cfg: dict[str, Any]) -> tuple[Dataset, 
         with dataset_path.open("rb") as f:
             dataset = pickle.load(f)
     else:
-        print(f"Building dataset from config")
-        dataset = PrimeKGDataset(dataset_cfg)
+        print("Building fixed PrimeKG split")
+        dataset = PrimeKGDataset(dataset_config)
         dataset.build_splits()
         print(f"Saving dataset to {dataset_path}")
         with dataset_path.open("wb") as f:
             pickle.dump(dataset, f)
 
-    return dataset.get_dataset(), dataset_label
+    return dataset.get_dataset(
+        keep_relations=keep_relations,
+        remove_relations=remove_relations,
+        keep_entities=keep_entities,
+        keep_entity_types=keep_entity_types,
+    ), dataset_label
 
 
-def run_pipeline(config: dict[str, Any]):
+def run_pipeline(config: dict[str, Any], dataset_config: dict[str, Any], experiment: dict[str, Any]):
     data_path = Path(config.get("data_path", "dataset_saves"))
 
-    dataset_config = load_config(Path(config.get("dataset_config_path", "dataset_config.yaml")))
-    dataset, dataset_label = get_dataset(data_path, dataset_config)
+    # dataset_config = load_config(Path(config.get("dataset_config_path", "dataset_config.yaml")))
+    # dataset, dataset_label = get_dataset(data_path, dataset_config)
+    dataset, dataset_label = get_dataset(
+        data_path=data_path,
+        dataset_config=dataset_config,
+        keep_relations=experiment.get("keep_relations"),
+        remove_relations=experiment.get("remove_relations"),
+        keep_entities=experiment.get("keep_entities"),
+        keep_entity_types=experiment.get("keep_entity_types"),
+    )
 
-    model = config.get("model", "TransE")
+    model = config.get("model", "RotatE")
 
     save_cfg = config.get("save", {})
     base_dir = Path(save_cfg.get("directory", "results"))
@@ -114,13 +137,11 @@ def run_pipeline(config: dict[str, Any]):
         evaluation_kwargs=config.get("evaluation_kwargs", None),
         # 9. Tracking
         result_tracker=config.get("result_tracker", None),
-        result_tracker_kwargs=dict(project=f"{model}_HPO"),
+        result_tracker_kwargs=config.get("result_tracker_kwargs", None),
         study_name=f"{dataset_label}_{model}_HPO",
         load_if_exists=True,
     )
     print("Pipeline finished. Saving results...")
-    print(f"Hits@10: {result.get_metric('hits@10'):.4f}")
-    print(f"Mean Reciprocal Rank: {result.get_metric('mean_reciprocal_rank'):.4f}")
     result.save_to_directory(output_dir)
     # with (output_dir / "result.pkl").open("wb") as f:
     # tries to pickle wandb module or smthing
@@ -140,9 +161,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 def main() -> None:
+
+    dataset_config = {
+            "kg_path": "data/kg_filtered.csv",
+            "key": "name",
+            "drop_duplicates": True,
+            "remove_self_loops": True,
+            "inverse_relations": True,
+            "split_relation": "disease_protein",
+            "val_count": 8000,
+            "test_count": 0,
+            "random_seed": 42,
+        }
+    experiment ={
+                "label": "disease_protein_bipartite",
+                "keep_relations": {"disease_protein"},
+            }
+
     args = parse_args()
     config = load_config(args.config)
-    output_dir = run_pipeline(config)
+    output_dir = run_pipeline(config, dataset_config, experiment)
     print(f"Results saved to: {output_dir}")
 
 

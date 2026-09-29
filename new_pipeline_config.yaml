@@ -1,20 +1,22 @@
-data_path: dataset_saves
+data_path: data
 # dataset_config_path: dataset_config.yaml # configs/dataset/hpo_config.yaml
 dataset_config_path: configs/dataset/disease_protein_homo.yaml
 
 save:
   directory: dataset_gridsearch_new
+  # directory: random_testing
 
 
 # 2. Model
 model: CompGCN # TransE, RotatE, CompGCN, RGCN
 model_kwargs:
-  embedding_dim: 512
+  embedding_dim: 128
   # num_layers: 1
 # 3. Loss
-loss: MarginRankingLoss # MarginRankingLoss is the default, NSSALoss with larger margin can work eg. 10
+loss: NSSALoss # MarginRankingLoss is the default, NSSALoss with larger margin can work eg. 10
 loss_kwargs:
-  margin: 1.0
+  margin: 10.0
+  adversarial_temperature: 0.85
 # 4. Regularizer
 # regularizer: lp
 # regularizer_kwargs:
@@ -24,12 +26,12 @@ loss_kwargs:
 # 5. Optimizer
 optimizer: Adam
 optimizer_kwargs:
-  lr: 0.001 # kicsit több? 0.005
+  lr: 0.02
 clear_optimizer: # False if want to continue training from checkpoint
 # 5.1 Learning Rate Scheduler
-lr_scheduler: #ExponentialLR # CosineAnnealingLR?
+lr_scheduler: ExponentialLR # CosineAnnealingLR?
 lr_scheduler_kwargs:
-  # gamma: 0.9
+  gamma: 0.985
 # 6. Training Loop
 training_loop: # slcwa or lcwa
 training_loop_kwargs:
@@ -38,16 +40,18 @@ negative_sampler: BasicNegativeSampler # BernoulliNegativeSampler, PseudoTypedNe
 negative_sampler_kwargs:
   num_negs_per_pos: 50
 # 7. Training
-epochs: 200
+epochs: 300
 training_kwargs:
-  batch_size: 1024
+  batch_size: 4096
+  # num_workers: 4
+  pin_memory: True
   checkpoint_name: checkpoint.pth
   # checkpoint_frequency: 10 # minutes
   checkpoint_on_failure: True
   # sampler: schlichtkrull
 stopper: "early"
 stopper_kwargs:
-  frequency: 5
+  frequency: 10
   patience: 3
   relative_delta: 0.005
   metric: mean_reciprocal_rank # hits_at_k, mean_reciprocal_rank
@@ -57,7 +61,7 @@ evaluator: RankBasedEvaluator # MacroRankBasedEvaluator, SampledRankBasedEvaluat
 evaluator_kwargs:
   filtered: True
 evaluation_kwargs:
-  batch_size: 32
+  batch_size: 512
 # 9. Tracking
 result_tracker: "wandb"
 result_tracker_kwargs:

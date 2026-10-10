@@ -177,6 +177,19 @@ def run_pipeline(
             encoder_kwargs["entity_representations_kwargs"] = (
                 entity_representation_kwargs
             )
+            # CompGCN otherwise reuses entity kwargs for relations, which
+            # applies the entity-sized pretrained tensor to relation rows.
+            relation_representation_kwargs = copy.deepcopy(
+                encoder_kwargs.get("relation_representations_kwargs", {})
+            )
+            relation_representation_kwargs.setdefault(
+                "embedding_dim", feature_dim
+            )
+            relation_representation_kwargs.pop("initializer", None)
+            relation_representation_kwargs.pop("trainable", None)
+            encoder_kwargs["relation_representations_kwargs"] = (
+                relation_representation_kwargs
+            )
             model_kwargs["encoder_kwargs"] = encoder_kwargs
         elif model.lower() == "rgcn":
             model_kwargs["base_entity_initializer"] = initializer
@@ -282,11 +295,11 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     try:
-        config_path = Path("new_pipeline_config.yaml")
+        config_path = Path("feature_config.yaml")
         config = load_config(config_path)
 
         dataset_config = {
-            "kg_path": "data/kg_filtered.csv",
+            "kg_path": "primekg/kg_filtered.csv",
             "key": "name",
             "drop_duplicates": True,
             "remove_self_loops": True,
@@ -307,38 +320,38 @@ def main() -> None:
                 "label": "disease_protein",
                 "keep_entity_types": {"disease", "gene/protein"},
             },
-            {
-                "label": "disease_protein_bioprocess",
-                "keep_entity_types": {"disease", "gene/protein", "biological_process"},
-            },
-            {
-                "label": "disease_protein_cellcomp",
-                "keep_entity_types": {"disease", "gene/protein", "cellular_component"},
-            },
-            {
-                "label": "disease_protein_exposure",
-                "keep_entity_types": {"disease", "gene/protein", "exposure"},
-            },
-            {
-                "label": "disease_protein_molecular",
-                "keep_entity_types": {"disease", "gene/protein", "molecular_function"},
-            },
-            {
-                "label": "disease_protein_pathway",
-                "keep_entity_types": {"disease", "gene/protein", "pathway"},
-            },
-            {
-                "label": "disease_protein_phenotype",
-                "keep_entity_types": {"disease", "gene/protein", "effect/phenotype"},
-            },
-            {
-                "label": "disease_protein_drug",
-                "keep_entity_types": {"disease", "gene/protein", "drug"},
-            },
-            {
-                "label": "disease_protein_anatomy",
-                "keep_entity_types": {"disease", "gene/protein", "anatomy"},
-            },
+            # {
+            #     "label": "disease_protein_bioprocess",
+            #     "keep_entity_types": {"disease", "gene/protein", "biological_process"},
+            # },
+            # {
+            #     "label": "disease_protein_cellcomp",
+            #     "keep_entity_types": {"disease", "gene/protein", "cellular_component"},
+            # },
+            # {
+            #     "label": "disease_protein_exposure",
+            #     "keep_entity_types": {"disease", "gene/protein", "exposure"},
+            # },
+            # {
+            #     "label": "disease_protein_molecular",
+            #     "keep_entity_types": {"disease", "gene/protein", "molecular_function"},
+            # },
+            # {
+            #     "label": "disease_protein_pathway",
+            #     "keep_entity_types": {"disease", "gene/protein", "pathway"},
+            # },
+            # {
+            #     "label": "disease_protein_phenotype",
+            #     "keep_entity_types": {"disease", "gene/protein", "effect/phenotype"},
+            # },
+            # {
+            #     "label": "disease_protein_drug",
+            #     "keep_entity_types": {"disease", "gene/protein", "drug"},
+            # },
+            # {
+            #     "label": "disease_protein_anatomy",
+            #     "keep_entity_types": {"disease", "gene/protein", "anatomy"},
+            # },
             # nagyobb csoportok, vagy teljes gráf ha fut
         ]
 

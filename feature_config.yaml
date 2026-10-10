@@ -56,7 +56,7 @@ training_kwargs:
   # sampler: schlichtkrull
 stopper: "early"
 stopper_kwargs:
-  frequency: 10
+  frequency: 5
   patience: 3
   relative_delta: 0.005
   metric: mean_reciprocal_rank # hits_at_k, mean_reciprocal_rank

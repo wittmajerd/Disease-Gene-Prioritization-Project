@@ -10,7 +10,7 @@ save:
 features:
   enabled: False
   trainable: False
-  # missing_feature_std: 0.02
+  learnable_std: 0.02
 
 
 # 2. Model

@@ -18,8 +18,38 @@ from typing import Any
 from pykeen.pipeline import pipeline
 from pykeen.datasets import Dataset
 from pykeen.nn.init import PretrainedInitializer
+from pykeen.nn.representation import Representation
 
 from dataset2 import PrimeKGDataset
+
+
+class ResidualFeatureRepresentation(Representation):
+    """Keep pretrained features fixed and learn a task-specific residual."""
+
+    def __init__(
+        self,
+        max_id: int,
+        feature_tensor: torch.Tensor,
+        learnable_std: float = 0.02,
+        **kwargs: Any,
+    ):
+        if feature_tensor.shape[0] != max_id or feature_tensor.ndim != 2:
+            raise ValueError(
+                "feature_tensor must have shape "
+                f"({max_id}, embedding_dim), got {tuple(feature_tensor.shape)}"
+            )
+        super().__init__(max_id=max_id, shape=feature_tensor.shape[1], **kwargs)
+        self.register_buffer("fixed_features", feature_tensor.detach().clone())
+        self.residual = torch.nn.Parameter(torch.empty_like(feature_tensor))
+        torch.nn.init.normal_(self.residual, mean=0.0, std=learnable_std)
+
+    def _plain_forward(
+        self,
+        indices: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if indices is None:
+            indices = torch.arange(self.max_id, device=self.residual.device)
+        return self.fixed_features[indices] + self.residual[indices]
 
 
 def load_config(config_path: Path) -> dict[str, Any]:
@@ -82,8 +112,6 @@ def get_dataset(
 def load_pretrained_features(
     feature_path: Path,
     entity_to_id: dict[str, int],
-    random_seed: int,
-    missing_feature_std: float = 0.02,
 ) -> tuple[torch.Tensor, int]:
     """Create an entity-aligned feature matrix from a pickle embedding map."""
     if not feature_path.exists():
@@ -115,17 +143,9 @@ def load_pretrained_features(
     if feature_dim is None:
         raise ValueError(f"Feature file contains no usable string-keyed vectors: {feature_path}")
 
-    generator = torch.Generator(device="cpu")
-    generator.manual_seed(random_seed)
-    feature_matrix = torch.empty(
+    feature_matrix = torch.zeros(
         (len(entity_to_id), feature_dim),
         dtype=torch.float32,
-    )
-    torch.nn.init.normal_(
-        feature_matrix,
-        mean=0.0,
-        std=missing_feature_std,
-        generator=generator,
     )
     mapped_count = 0
     for entity_name, entity_id in entity_to_id.items():
@@ -167,8 +187,6 @@ def run_pipeline(
         pretrained_features, mapped_count = load_pretrained_features(
             feature_path=feature_path,
             entity_to_id=dataset.training.entity_to_id,
-            random_seed=random_seed,
-            missing_feature_std=feature_config.get("missing_feature_std", 0.02),
         )
         feature_dim = pretrained_features.shape[1]
         configured_dim = model_kwargs.get("embedding_dim")
@@ -178,20 +196,13 @@ def run_pipeline(
                 f"feature dimension {feature_dim}"
             )
         model_kwargs["embedding_dim"] = feature_dim
-        initializer = PretrainedInitializer(tensor=pretrained_features)
         if model.lower() == "compgcn":
             encoder_kwargs = copy.deepcopy(model_kwargs.get("encoder_kwargs", {}))
-            entity_representation_kwargs = copy.deepcopy(
-                encoder_kwargs.get("entity_representations_kwargs", {})
-            )
-            entity_representation_kwargs.update(
-                embedding_dim=feature_dim,
-                initializer=initializer,
-                trainable=feature_config.get("trainable", False),
-            )
-            encoder_kwargs["entity_representations_kwargs"] = (
-                entity_representation_kwargs
-            )
+            encoder_kwargs["entity_representations"] = ResidualFeatureRepresentation
+            encoder_kwargs["entity_representations_kwargs"] = {
+                "feature_tensor": pretrained_features,
+                "learnable_std": feature_config.get("learnable_std", 0.02),
+            }
             # CompGCN otherwise reuses entity kwargs for relations, which
             # applies the entity-sized pretrained tensor to relation rows.
             relation_representation_kwargs = copy.deepcopy(
@@ -207,9 +218,13 @@ def run_pipeline(
             )
             model_kwargs["encoder_kwargs"] = encoder_kwargs
         elif model.lower() == "rgcn":
-            model_kwargs["base_entity_initializer"] = initializer
+            model_kwargs["base_entity_initializer"] = PretrainedInitializer(
+                tensor=pretrained_features
+            )
         else:
-            model_kwargs["entity_initializer"] = initializer
+            model_kwargs["entity_initializer"] = PretrainedInitializer(
+                tensor=pretrained_features
+            )
         print(
             f"Mapped pretrained features for {mapped_count} / "
             f"{dataset.training.num_entities} training entities "

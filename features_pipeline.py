@@ -132,6 +132,7 @@ def run_pipeline(
     dataset_config: dict[str, Any],
     experiment: dict[str, Any],
     random_seed: int,
+    feature_path: Path | None = None,
 ):
     data_path = Path(config.get("data_path", "dataset_saves"))
 
@@ -148,9 +149,8 @@ def run_pipeline(
     model_kwargs = copy.deepcopy(config.get("model_kwargs", {}))
     feature_config = config.get("features", {})
     if feature_config.get("enabled", True):
-        feature_path = Path(
-            feature_config.get("path", "primekg/ggd_attention.pickle")
-        )
+        if feature_path is None:
+            feature_path = Path(feature_config.get("path", "primekg/ggd_attention.pickle"))
         pretrained_features, mapped_count = load_pretrained_features(
             feature_path=feature_path,
             entity_to_id=dataset.training.entity_to_id,
@@ -203,7 +203,7 @@ def run_pipeline(
 
     run_hash = hashlib.sha256(
         json.dumps(
-            {"config": config, "experiment": experiment},
+            {"config": config, "experiment": experiment, "feature_path": str(feature_path)},
             sort_keys=True,
             default=str,
         ).encode("utf-8")
@@ -316,10 +316,10 @@ def main() -> None:
                 "label": "disease_protein_bipartite",
                 "keep_relations": {"disease_protein"},
             },
-            {
-                "label": "disease_protein",
-                "keep_entity_types": {"disease", "gene/protein"},
-            },
+            # {
+            #     "label": "disease_protein",
+            #     "keep_entity_types": {"disease", "gene/protein"},
+            # },
             # {
             #     "label": "disease_protein_bioprocess",
             #     "keep_entity_types": {"disease", "gene/protein", "biological_process"},
@@ -355,20 +355,37 @@ def main() -> None:
             # nagyobb csoportok, vagy teljes gráf ha fut
         ]
 
+        feature_paths = [
+            # Path("data/gcl_embed/ggd_none.pickle"),
+            # Path("data/gcl_embed/ggd_attention.pickle"),
+            # Path("data/gcl_embed/ggd_redaf.pickle"),
+            # Path("data/gcl_embed/grace_none.pickle"),
+            Path("data/gcl_embed/grace_attention.pickle"),
+            # Path("data/gcl_embed/grace_redaf.pickle"),
+            # Path("data/gcl_embed/dgi_none.pickle"),
+            # Path("data/gcl_embed/dgi_attention.pickle"),
+            # Path("data/gcl_embed/dgi_redaf.pickle"),
+        ]
+        # also will need a label like grace_attention, ggd_none, etc. to save in the results folder and tag in wandb
+        labels = [p.stem for p in feature_paths]
+        print(labels)
+
         for seed in [42]:
             for experiment in experiments:
-                print(f"Running {experiment['label']} with random seed: {seed}")
-                run_config = copy.deepcopy(config)
-                output_dir = run_pipeline(
-                    run_config,
-                    dataset_config,
-                    experiment,
-                    seed,
-                )
-                print(f"Results saved to: {output_dir}")
-                gc.collect()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                for feature_path in feature_paths:
+                    print(f"Running {experiment['label']} with random seed: {seed}")
+                    run_config = copy.deepcopy(config)
+                    output_dir = run_pipeline(
+                        run_config,
+                        dataset_config,
+                        experiment,
+                        seed,
+                        feature_path=feature_path
+                    )
+                    print(f"Results saved to: {output_dir}")
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
     except Exception as e:
         import traceback

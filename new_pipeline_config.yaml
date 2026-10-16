@@ -42,7 +42,7 @@ negative_sampler_kwargs:
 # 7. Training
 epochs: 300
 training_kwargs:
-  batch_size: 4096
+  batch_size: 8000
   # num_workers: 4
   pin_memory: True
   checkpoint_name: checkpoint.pth
@@ -51,7 +51,7 @@ training_kwargs:
   # sampler: schlichtkrull
 stopper: "early"
 stopper_kwargs:
-  frequency: 10
+  frequency: 5
   patience: 3
   relative_delta: 0.005
   metric: mean_reciprocal_rank # hits_at_k, mean_reciprocal_rank

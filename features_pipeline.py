@@ -82,6 +82,8 @@ def get_dataset(
 def load_pretrained_features(
     feature_path: Path,
     entity_to_id: dict[str, int],
+    random_seed: int,
+    missing_feature_std: float = 0.02,
 ) -> tuple[torch.Tensor, int]:
     """Create an entity-aligned feature matrix from a pickle embedding map."""
     if not feature_path.exists():
@@ -113,9 +115,17 @@ def load_pretrained_features(
     if feature_dim is None:
         raise ValueError(f"Feature file contains no usable string-keyed vectors: {feature_path}")
 
-    feature_matrix = torch.zeros(
+    generator = torch.Generator(device="cpu")
+    generator.manual_seed(random_seed)
+    feature_matrix = torch.empty(
         (len(entity_to_id), feature_dim),
         dtype=torch.float32,
+    )
+    torch.nn.init.normal_(
+        feature_matrix,
+        mean=0.0,
+        std=missing_feature_std,
+        generator=generator,
     )
     mapped_count = 0
     for entity_name, entity_id in entity_to_id.items():
@@ -133,6 +143,7 @@ def run_pipeline(
     experiment: dict[str, Any],
     random_seed: int,
     feature_path: Path | None = None,
+    feature_label: str | None = None,
 ):
     data_path = Path(config.get("data_path", "dataset_saves"))
 
@@ -151,9 +162,13 @@ def run_pipeline(
     if feature_config.get("enabled", True):
         if feature_path is None:
             feature_path = Path(feature_config.get("path", "primekg/ggd_attention.pickle"))
+        if feature_label is None:
+            feature_label = feature_path.stem
         pretrained_features, mapped_count = load_pretrained_features(
             feature_path=feature_path,
             entity_to_id=dataset.training.entity_to_id,
+            random_seed=random_seed,
+            missing_feature_std=feature_config.get("missing_feature_std", 0.02),
         )
         feature_dim = pretrained_features.shape[1]
         configured_dim = model_kwargs.get("embedding_dim")
@@ -172,7 +187,7 @@ def run_pipeline(
             entity_representation_kwargs.update(
                 embedding_dim=feature_dim,
                 initializer=initializer,
-                trainable=False,
+                trainable=feature_config.get("trainable", False),
             )
             encoder_kwargs["entity_representations_kwargs"] = (
                 entity_representation_kwargs
@@ -198,12 +213,21 @@ def run_pipeline(
         print(
             f"Mapped pretrained features for {mapped_count} / "
             f"{dataset.training.num_entities} training entities "
-            f"(dimension {feature_dim})"
+            f"(dimension {feature_dim}); "
+            f"randomly initialized {dataset.training.num_entities - mapped_count}"
+            " missing feature vectors"
         )
+
+    if feature_label is None:
+        feature_label = feature_path.stem if feature_path is not None else "no_features"
 
     run_hash = hashlib.sha256(
         json.dumps(
-            {"config": config, "experiment": experiment, "feature_path": str(feature_path)},
+            {
+                "config": config,
+                "experiment": experiment,
+                "feature_label": feature_label,
+            },
             sort_keys=True,
             default=str,
         ).encode("utf-8")
@@ -211,7 +235,10 @@ def run_pipeline(
 
     save_cfg = config.get("save", {})
     base_dir = Path(save_cfg.get("directory", "results"))
-    run_name = f"{dataset_label}_{model}_{experiment['label']}_{run_hash}_{random_seed}"
+    run_name = (
+        f"{dataset_label}_{model}_{experiment['label']}_"
+        f"{feature_label}_{run_hash}_{random_seed}"
+    )
 
     output_dir = base_dir / run_name
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -220,6 +247,7 @@ def run_pipeline(
     config.setdefault("training_kwargs", {})["checkpoint_directory"] = output_dir
     config.setdefault("stopper_kwargs", {})["best_model_path"] = output_dir / "best_model.pth"
     config.setdefault("result_tracker_kwargs", {})["tags"] = [
+        feature_label,
         dataset_label,
         experiment["label"],
         str(random_seed),
@@ -299,7 +327,7 @@ def main() -> None:
         config = load_config(config_path)
 
         dataset_config = {
-            "kg_path": "primekg/kg_filtered.csv",
+            "kg_path": "data/kg_filtered.csv",
             "key": "name",
             "drop_duplicates": True,
             "remove_self_loops": True,
@@ -355,32 +383,35 @@ def main() -> None:
             # nagyobb csoportok, vagy teljes gráf ha fut
         ]
 
-        feature_paths = [
-            # Path("data/gcl_embed/ggd_none.pickle"),
-            # Path("data/gcl_embed/ggd_attention.pickle"),
-            # Path("data/gcl_embed/ggd_redaf.pickle"),
-            # Path("data/gcl_embed/grace_none.pickle"),
-            Path("data/gcl_embed/grace_attention.pickle"),
-            # Path("data/gcl_embed/grace_redaf.pickle"),
-            # Path("data/gcl_embed/dgi_none.pickle"),
-            # Path("data/gcl_embed/dgi_attention.pickle"),
-            # Path("data/gcl_embed/dgi_redaf.pickle"),
+        features = [
+            # {"label": "ggd_none", "path": Path("data/gcl_embed/ggd_none.pickle")},
+            # {"label": "ggd_attention", "path": Path("data/gcl_embed/ggd_attention.pickle")},
+            # {"label": "ggd_redaf", "path": Path("data/gcl_embed/ggd_redaf.pickle")},
+            # {"label": "grace_none", "path": Path("data/gcl_embed/grace_none.pickle")},
+            # {"label": "grace_attention", "path": Path("data/gcl_embed/grace_attention.pickle")},
+            # {"label": "grace_redaf", "path": Path("data/gcl_embed/grace_redaf.pickle")},
+            # {"label": "dgi_none", "path": Path("data/gcl_embed/dgi_none.pickle")},
+            # {"label": "dgi_attention", "path": Path("data/gcl_embed/dgi_attention.pickle")},
+            # {"label": "dgi_redaf", "path": Path("data/gcl_embed/dgi_redaf.pickle")},
         ]
-        # also will need a label like grace_attention, ggd_none, etc. to save in the results folder and tag in wandb
-        labels = [p.stem for p in feature_paths]
-        print(labels)
+        if not config.get("features", {}).get("enabled", True):
+            features = [{"label": "no_features", "path": None}]
 
         for seed in [42]:
             for experiment in experiments:
-                for feature_path in feature_paths:
-                    print(f"Running {experiment['label']} with random seed: {seed}")
+                for feature in features:
+                    print(
+                        f"Running {experiment['label']} with "
+                        f"{feature['label']} features and random seed: {seed}"
+                    )
                     run_config = copy.deepcopy(config)
                     output_dir = run_pipeline(
                         run_config,
                         dataset_config,
                         experiment,
                         seed,
-                        feature_path=feature_path
+                        feature_path=feature["path"],
+                        feature_label=feature["label"],
                     )
                     print(f"Results saved to: {output_dir}")
                     gc.collect()

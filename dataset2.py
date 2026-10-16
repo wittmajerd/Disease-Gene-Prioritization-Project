@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import numpy as np
 import pandas as pd
+import torch
 from typing import Any
 
 from pykeen.triples import TriplesFactory
@@ -200,24 +202,112 @@ def filter_dataset(
         else None
     )
 
-    entity_ids = (
-        training_factory.entities_to_ids(keep_entities)
-        if keep_entities is not None
-        else None
-    )
+    entity_ids = None
+    if relation_ids is not None:
+        active_entity_ids = []
+        for factory in (dataset.training, dataset.validation, dataset.testing):
+            relation_ids_tensor = torch.as_tensor(
+                relation_ids,
+                dtype=factory.mapped_triples.dtype,
+                device=factory.mapped_triples.device,
+            )
+            relation_mask = torch.isin(
+                factory.mapped_triples[:, 1],
+                relation_ids_tensor,
+            )
+            triples = factory.mapped_triples[relation_mask]
+            if triples.numel():
+                active_entity_ids.append(triples[:, (0, 2)].reshape(-1))
+        if active_entity_ids:
+            entity_ids = torch.unique(torch.cat(active_entity_ids))
+        else:
+            entity_ids = torch.empty(0, dtype=torch.long)
 
-    # Apply exactly the same filtering to all splits.
+    if keep_entities is not None:
+        requested_entity_ids = training_factory.entities_to_ids(keep_entities)
+        requested_entity_ids = torch.as_tensor(
+            requested_entity_ids,
+            dtype=training_factory.mapped_triples.dtype,
+            device=training_factory.mapped_triples.device,
+        )
+        entity_ids = (
+            requested_entity_ids
+            if entity_ids is None
+            else entity_ids[torch.isin(entity_ids, requested_entity_ids)]
+        )
+
+    # Apply exactly the same filtering to all splits. PyKEEN preserves the
+    # original entity mapping when restricting a factory, so compact it after
+    # filtering to avoid retaining isolated entities in the model.
+    factories = tuple(
+        factory.new_with_restriction(
+            entities=entity_ids,
+            relations=relation_ids,
+        )
+        for factory in (dataset.training, dataset.validation, dataset.testing)
+    )
+    if entity_ids is None:
+        return EagerDataset(
+            training=factories[0],
+            validation=factories[1],
+            testing=factories[2],
+        )
+
+    active_entity_id_parts = [
+        factory.mapped_triples[:, (0, 2)].reshape(-1)
+        for factory in factories
+        if factory.mapped_triples.numel()
+    ]
+    if not active_entity_id_parts:
+        raise ValueError("Filtering removed all triples from the dataset.")
+    active_entity_ids = torch.unique(torch.cat(active_entity_id_parts))
+    entity_id_to_label = training_factory.entity_id_to_label
+    compact_entity_to_id = {
+        entity_id_to_label[int(entity_id)]: compact_id
+        for compact_id, entity_id in enumerate(active_entity_ids.tolist())
+    }
+    relation_id_to_label = training_factory.relation_id_to_label
+    active_relation_labels = {
+        relation_id_to_label[int(relation_id)]
+        for factory in factories
+        for relation_id in torch.unique(factory.mapped_triples[:, 1]).tolist()
+    }
+    compact_relation_to_id = {
+        relation_label: compact_id
+        for compact_id, relation_label in enumerate(
+            sorted(
+                relation_label
+                for relation_label in active_relation_labels
+                if not relation_label.endswith("_inverse")
+            )
+        )
+    }
+
+    compact_factories = []
+    for factory in factories:
+        labeled_triples = np.asarray(
+            [
+                [
+                    entity_id_to_label[int(head_id)],
+                    relation_id_to_label[int(relation_id)],
+                    entity_id_to_label[int(tail_id)],
+                ]
+                for head_id, relation_id, tail_id in factory.mapped_triples.tolist()
+                if not relation_id_to_label[int(relation_id)].endswith("_inverse")
+            ],
+            dtype=str,
+        )
+        compact_factories.append(
+            TriplesFactory.from_labeled_triples(
+                triples=labeled_triples,
+                entity_to_id=compact_entity_to_id,
+                relation_to_id=compact_relation_to_id,
+                create_inverse_triples=factory is factories[0],
+            )
+        )
+
     return EagerDataset(
-        training=dataset.training.new_with_restriction(
-            entities=entity_ids,
-            relations=relation_ids,
-        ),
-        validation=dataset.validation.new_with_restriction(
-            entities=entity_ids,
-            relations=relation_ids,
-        ),
-        testing=dataset.testing.new_with_restriction(
-            entities=entity_ids,
-            relations=relation_ids,
-        ),
+        training=compact_factories[0],
+        validation=compact_factories[1],
+        testing=compact_factories[2],
     )

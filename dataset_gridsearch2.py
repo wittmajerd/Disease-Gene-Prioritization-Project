@@ -95,6 +95,8 @@ def run_pipeline(
         keep_entity_types=experiment.get("keep_entity_types"),
     )
 
+    print(f"{dataset.training.num_entities} entities in the dataset")
+
     model = config.get("model", "RotatE")
     model_kwargs = config.get("model_kwargs", {})
 
@@ -213,42 +215,42 @@ def main() -> None:
                 "label": "disease_protein_bipartite",
                 "keep_relations": {"disease_protein"},
             },
-            {
-                "label": "disease_protein",
-                "keep_entity_types": {"disease", "gene/protein"},
-            },
-            {
-                "label": "disease_protein_bioprocess",
-                "keep_entity_types": {"disease", "gene/protein", "biological_process"},
-            },
-            {
-                "label": "disease_protein_cellcomp",
-                "keep_entity_types": {"disease", "gene/protein", "cellular_component"},
-            },
-            {
-                "label": "disease_protein_exposure",
-                "keep_entity_types": {"disease", "gene/protein", "exposure"},
-            },
-            {
-                "label": "disease_protein_molecular",
-                "keep_entity_types": {"disease", "gene/protein", "molecular_function"},
-            },
-            {
-                "label": "disease_protein_pathway",
-                "keep_entity_types": {"disease", "gene/protein", "pathway"},
-            },
-            {
-                "label": "disease_protein_phenotype",
-                "keep_entity_types": {"disease", "gene/protein", "effect/phenotype"},
-            },
-            {
-                "label": "disease_protein_drug",
-                "keep_entity_types": {"disease", "gene/protein", "drug"},
-            },
-            {
-                "label": "disease_protein_anatomy",
-                "keep_entity_types": {"disease", "gene/protein", "anatomy"},
-            },
+            # {
+            #     "label": "disease_protein",
+            #     "keep_entity_types": {"disease", "gene/protein"},
+            # },
+            # {
+            #     "label": "disease_protein_bioprocess",
+            #     "keep_entity_types": {"disease", "gene/protein", "biological_process"},
+            # },
+            # {
+            #     "label": "disease_protein_cellcomp",
+            #     "keep_entity_types": {"disease", "gene/protein", "cellular_component"},
+            # },
+            # {
+            #     "label": "disease_protein_exposure",
+            #     "keep_entity_types": {"disease", "gene/protein", "exposure"},
+            # },
+            # {
+            #     "label": "disease_protein_molecular",
+            #     "keep_entity_types": {"disease", "gene/protein", "molecular_function"},
+            # },
+            # {
+            #     "label": "disease_protein_pathway",
+            #     "keep_entity_types": {"disease", "gene/protein", "pathway"},
+            # },
+            # {
+            #     "label": "disease_protein_phenotype",
+            #     "keep_entity_types": {"disease", "gene/protein", "effect/phenotype"},
+            # },
+            # {
+            #     "label": "disease_protein_drug",
+            #     "keep_entity_types": {"disease", "gene/protein", "drug"},
+            # },
+            # {
+            #     "label": "disease_protein_anatomy",
+            #     "keep_entity_types": {"disease", "gene/protein", "anatomy"},
+            # },
             # nagyobb csoportok, vagy teljes gráf ha fut
         ]
 

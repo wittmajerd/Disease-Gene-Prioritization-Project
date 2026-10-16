@@ -8,8 +8,9 @@ save:
 
 # Entity features produced by the PrimeKG embedding pipeline.
 features:
-  enabled: true
-  path: data/gcl_embed/ggd_attention.pickle
+  enabled: False
+  trainable: False
+  # missing_feature_std: 0.02
 
 
 # 2. Model
@@ -45,7 +46,7 @@ negative_sampler: BasicNegativeSampler # BernoulliNegativeSampler, PseudoTypedNe
 negative_sampler_kwargs:
   num_negs_per_pos: 50
 # 7. Training
-epochs: 300
+epochs: 200
 training_kwargs:
   batch_size: 4096
   # num_workers: 4
